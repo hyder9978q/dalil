@@ -375,26 +375,55 @@ function renderSettings(){
   document.getElementById('setPhone').textContent = user.phone + ' • ' + user.vehicle;
 }
 // ===== الخريطة (مجانية - OpenStreetMap) =====
+let stopMarkers = [];
 function initMap(){
   if(map){ map.invalidateSize(); return; }
   map = L.map('map',{zoomControl:false}).setView(BAGHDAD, 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-  ORDERS.filter(o=>o.status!=='delivered').forEach(o=>{
-    const m = L.marker([o.lat,o.lng]).addTo(map).bindPopup(`<b>${o.customer}</b><br>${o.area}`);
-    markers.push(m);
+  drawMarkers();
+}
+function drawMarkers(order){
+  stopMarkers.forEach(m=>map.removeLayer(m)); stopMarkers=[];
+  const pts = ORDERS.filter(o=>o.status==='pending'||o.status==='delivering').filter(o=>o.lat&&o.lng);
+  pts.forEach(o=>{
+    const n = order ? (order.indexOf(o.id)+1) : null;
+    const icon = L.divIcon({className:'', html:`<div style="background:${n?'#10F58C':'#2563EB'};color:${n?'#04321f':'#fff'};width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.4);border:2px solid #fff"><span style="transform:rotate(45deg)">${n||'•'}</span></div>`, iconSize:[30,30], iconAnchor:[15,30]});
+    const m = L.marker([o.lat,o.lng],{icon}).addTo(map).bindPopup(`<b>${o.customer}</b><br>${o.area}`);
+    stopMarkers.push(m);
   });
 }
 
-// ترتيب المحطات حسب الأقرب (محاكاة Route Optimization)
-function optimizeRoute(){
-  const pts = ORDERS.filter(o=>o.status!=='delivered');
-  if(routeLine) map.removeLayer(routeLine);
-  const coords = [BAGHDAD, ...pts.map(o=>[o.lat,o.lng])];
-  routeLine = L.polyline(coords, {color:'#10F58C', weight:4, opacity:.8, dashArray:'8 6'}).addTo(map);
-  map.fitBounds(routeLine.getBounds(), {padding:[60,60]});
-  document.getElementById('routeStops').textContent = pts.length + ' محطات';
-  document.getElementById('routeEta').textContent = 'وقت الوصول ~ ' + (pts.length*12) + ' دقيقة';
-  toast('⚡ تم تحسين المسار حسب أقل وقت');
+// ===== تحسين المسار الحقيقي (OSRM) — أفضل ترتيب وأقصر طريق =====
+async function optimizeRoute(){
+  const pts = ORDERS.filter(o=>o.status==='pending'||o.status==='delivering').filter(o=>o.lat&&o.lng);
+  if(pts.length < 1){ toast('لا توجد طلبات بمواقع محددة'); return; }
+  toast('⚡ جاري حساب أفضل مسار...');
+  // الإحداثيات بصيغة lng,lat — تبدأ من موقع المندوب (بغداد) ثم الطرود
+  const coords = [[BAGHDAD[1],BAGHDAD[0]], ...pts.map(o=>[o.lng,o.lat])];
+  const str = coords.map(c=>c[0]+','+c[1]).join(';');
+  const url = `https://router.project-osrm.org/trip/v1/driving/${str}?source=first&roundtrip=false&overview=full&geometries=geojson`;
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data.code!=='Ok') throw new Error('osrm');
+    if(routeLine) map.removeLayer(routeLine);
+    // رسم الطريق الحقيقي بالشوارع
+    const line = data.trips[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    routeLine = L.polyline(line, {color:'#10F58C', weight:5, opacity:.9}).addTo(map);
+    map.fitBounds(routeLine.getBounds(), {padding:[50,50]});
+    // الترتيب الأمثل: waypoints[i].waypoint_index يعطي ترتيب الزيارة
+    // أول نقطة هي المندوب، نتجاهلها ونرتّب الطرود
+    const order = [];
+    data.waypoints.forEach((w,i)=>{ if(i>0) order[w.waypoint_index-1] = pts[i-1].id; });
+    drawMarkers(order.filter(x=>x!==undefined));
+    const mins = Math.round(data.trips[0].duration/60);
+    const km = (data.trips[0].distance/1000).toFixed(1);
+    document.getElementById('routeStops').textContent = pts.length + ' محطات';
+    document.getElementById('routeEta').textContent = `${km} كم • ${mins} دقيقة`;
+    toast('✓ أفضل مسار: ابدأ بالمحطة رقم 1');
+  }catch(e){
+    toast('تعذّر حساب المسار، تحقق من الانترنت');
+  }
 }
 
 // ===== الميزة 4: تحميل المنطقة للعمل بدون انترنت =====
