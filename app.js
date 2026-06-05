@@ -374,12 +374,18 @@ function renderSettings(){
   document.getElementById('setName').textContent = user.name;
   document.getElementById('setPhone').textContent = user.phone + ' • ' + user.vehicle;
 }
-// ===== الخريطة (مجانية - OpenStreetMap) =====
-let stopMarkers = [];
+// ===== الخريطة (خرائط CARTO حديثة - مجانية) =====
+let stopMarkers = [], tileLayer = null;
+function mapTiles(){
+  const dark = (document.body.dataset.theme === 'dark');
+  return dark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+}
 function initMap(){
   if(map){ map.invalidateSize(); return; }
-  map = L.map('map',{zoomControl:false}).setView(BAGHDAD, 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  map = L.map('map',{zoomControl:false, attributionControl:false}).setView(BAGHDAD, 12);
+  tileLayer = L.tileLayer(mapTiles(), {maxZoom:20, subdomains:'abcd'}).addTo(map);
   drawMarkers();
 }
 function drawMarkers(order){
@@ -514,6 +520,7 @@ function toggleTheme(){
   document.body.dataset.theme = next;
   localStorage.setItem('theme', next);
   applyTheme();
+  if(map && tileLayer) tileLayer.setUrl(mapTiles());
 }
 function applyTheme(){
   const t = localStorage.getItem('theme') || 'dark';
