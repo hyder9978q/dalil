@@ -180,6 +180,23 @@ body{
 .row2{display:flex;gap:10px}
 .row2>*{flex:1}
 .mini-label{font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:8px}
+
+/* ===== Order sheet (الميزة 1) ===== */
+.sheet-bg{position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;animation:fade .2s}
+.sheet-bg.show{display:flex}
+.sheet{background:var(--surface);width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:14px 18px calc(22px + var(--safe-b));animation:slideup .3s ease;max-height:88%;overflow-y:auto}
+@keyframes slideup{from{transform:translateY(100%)}to{transform:none}}
+.sheet-handle{width:42px;height:5px;border-radius:3px;background:var(--border);margin:0 auto 14px}
+.pin-box{background:rgba(16,245,140,.12);color:var(--green-dim);border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;text-align:center}
+
+/* ===== Preset cards (نظام العمل) ===== */
+.preset{display:flex;align-items:center;gap:12px;background:var(--surface);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;cursor:pointer;transition:.18s}
+.preset:active{transform:scale(.98)}
+.preset.on{border-color:var(--green-dim);background:rgba(16,245,140,.06)}
+.preset .pic{width:46px;height:46px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;font-size:22px;flex-shrink:0}
+.preset b{font-size:15px;font-weight:700;display:block}
+.preset small{font-size:12px;color:var(--text-soft)}
+.preset .chk{width:26px;height:26px;border-radius:50%;background:var(--green-dim);color:#04321f;display:grid;place-items:center;font-weight:800;flex-shrink:0}
 </style>
 </head>
 <body data-theme="dark">
@@ -200,7 +217,7 @@ body{
       </select>
     </div>
     <button class="btn btn-green" onclick="doRegister()">ابدأ التجربة المجانية 🚀</button>
-    <div class="trial-tag">✓ 3 أيام مجانية — بدون بطاقة دفع</div>
+    <div class="trial-tag">✓ 3 أيام مجانية — بدون بطاقة دفع<br><span style="color:#A9BBE3;font-weight:400">لديك حساب؟ أدخل نفس رقمك لتسجيل الدخول</span></div>
   </div>
 </div>
 
@@ -237,6 +254,14 @@ body{
 
     <div class="section-title">الطلبات الحالية <a onclick="go('orders')">عرض الكل</a></div>
     <div id="homeOrders"></div>
+
+    <div class="section-title">💰 دخلي ومصاريفي اليوم</div>
+    <div class="card">
+      <div class="list-item"><div class="ic bg-green">⬆️</div><div class="t"><b>إجمالي الأرباح</b><small>أجور التوصيل</small></div><b id="earnIn" style="color:var(--green-dim)">0 د.ع</b></div>
+      <div class="list-item"><div class="ic bg-warn">⛽</div><div class="t"><b>مصروف الوقود</b><small id="fuelSub">اضغط لإضافة</small></div><b id="earnFuel" style="color:var(--warn)">0 د.ع</b></div>
+      <div class="list-item"><div class="ic bg-blue">💵</div><div class="t"><b>صافي الربح</b><small>بعد المصاريف</small></div><b id="earnNet" style="color:var(--blue-bright)">0 د.ع</b></div>
+      <button class="btn btn-ghost btn-sm" onclick="addFuel()" style="margin-top:6px">⛽ تسجيل مصروف وقود</button>
+    </div>
   </div>
 
   <!-- ORDERS -->
@@ -255,6 +280,7 @@ body{
       <button class="iconbtn" onclick="go('home')">→</button>
       <div style="flex:1"></div>
       <button class="iconbtn" onclick="voiceCmd()">🎙️</button>
+      <button class="iconbtn" onclick="downloadArea()" title="تحميل للأوفلاين">⬇️</button>
       <button class="iconbtn" onclick="optimizeRoute()" title="تحسين">⚡</button>
     </div>
     <div id="map"></div>
@@ -289,6 +315,21 @@ body{
       <div style="position:relative;z-index:1;font-size:13px;opacity:.85" id="subExpiry"></div>
       <button class="btn btn-green btn-sm" style="margin-top:14px" onclick="showLock()">تجديد / ترقية الاشتراك</button>
     </div>
+    <div id="cashBlock">
+    <div class="section-title">💵 حساب الكاش اليوم</div>
+    <div class="stat-grid">
+      <div class="stat"><div class="ic bg-green">✓</div><div class="v" id="cashCollected" style="font-size:18px">0</div><div class="k">محصّل (بيدك الآن)</div></div>
+      <div class="stat"><div class="ic bg-warn">⏳</div><div class="v" id="cashPending" style="font-size:18px">0</div><div class="k">متبقّي للتحصيل</div></div>
+    </div>
+    </div>
+
+    <div class="section-title">📋 كشف حساب المندوب</div>
+    <div class="card">
+      <div class="list-item"><div class="ic bg-green">💰</div><div class="t"><b>أجرتك المستحقة</b><small id="setFormula"></small></div><b id="setEarn" style="color:var(--green-dim)">0</b></div>
+      <div class="list-item" id="toCompanyRow"><div class="ic bg-blue">🏢</div><div class="t"><b>تسلّم للشركة/التاجر</b><small>كاش محصّل ناقص أجرتك</small></div><b id="setToCompany" style="color:var(--blue-bright)">0</b></div>
+      <div class="list-item" id="returnRow"><div class="ic bg-warn">↩️</div><div class="t"><b>الراجع</b><small>طرود مرتجعة للتاجر</small></div><b id="setReturned" style="color:var(--warn)">0</b></div>
+    </div>
+
     <div class="section-title">طرق الدفع المتاحة</div>
     <div class="card">
       <div class="list-item"><div class="ic bg-purple">💳</div><div class="t"><b>زين كاش</b><small id="zainNum">07901234567</small></div><span class="badge b-done">مفعّل</span></div>
@@ -322,6 +363,13 @@ body{
   <div class="screen" id="s-admin">
     <div class="topbar"><div class="brand"><div class="logo"></div><h1>لوحة الإدارة</h1></div>
       <button class="iconbtn" onclick="go('settings')">→</button></div>
+
+    <div class="card" style="background:linear-gradient(120deg,var(--blue),var(--blue-deep));color:#fff;border:none;cursor:pointer" onclick="go('worksys')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><b style="font-size:16px">⚙️ نظام العمل</b><div style="font-size:13px;opacity:.85;margin-top:4px" id="cfgSummary">اختر نموذج شركتك</div></div>
+        <span style="font-size:20px">←</span>
+      </div>
+    </div>
     <div class="section-title">إعدادات المحافظ</div>
     <div class="card">
       <div class="field"><label>رقم زين كاش</label><input id="aZain" value="07901234567"></div>
@@ -346,6 +394,43 @@ body{
     </div>
   </div>
 
+  <!-- WORK SYSTEM (نظام العمل المرن) -->
+  <div class="screen" id="s-worksys">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>نظام العمل</h1></div>
+      <button class="iconbtn" onclick="go('admin')">→</button></div>
+
+    <div class="section-title">١. اختر نموذج شركتك</div>
+    <div id="presetCards"></div>
+
+    <div class="section-title" style="margin-top:18px">٢. خصّص حسب رغبتك</div>
+    <div class="card" id="cfgToggles"></div>
+
+    <div class="section-title">٣. إعدادات متقدمة</div>
+    <div class="card">
+      <div class="field"><label>تغطية التوصيل</label>
+        <select onchange="setCfg('coverage',this.value)" id="cfgCoverage">
+          <option value="city">داخل المدينة فقط</option>
+          <option value="govs">بين كل المحافظات (18)</option>
+        </select></div>
+      <div class="field"><label>نموذج أجر المندوب</label>
+        <select onchange="setCfg('payModel',this.value)" id="cfgPay">
+          <option value="perDelivery">بالقطعة (أجرة لكل طرد)</option>
+          <option value="salary">راتب ثابت</option>
+          <option value="dailySettle">حساب يومي</option>
+          <option value="commission">عمولة نسبية</option>
+        </select></div>
+      <div class="field" id="cfgFeeWrap"><label>أجرة المندوب لكل توصيلة (د.ع)</label>
+        <input type="number" id="cfgFee" onchange="setCfg('fee',parseInt(this.value)||0)"></div>
+      <div class="field"><label>نموذج التسعير على التاجر</label>
+        <select onchange="setCfg('pricing',this.value)" id="cfgPricing">
+          <option value="flat">سعر موحّد</option>
+          <option value="perZone">حسب المحافظة/المنطقة</option>
+          <option value="perWeight">حسب الوزن</option>
+        </select></div>
+    </div>
+    <div style="text-align:center;color:var(--text-faint);font-size:12px;margin-top:10px">كل التغييرات تُحفظ تلقائياً وتنطبق فوراً على النظام</div>
+  </div>
+
   <!-- NAV -->
   <div class="nav">
     <button class="active" data-s="home" onclick="go('home')"><span class="ni">🏠</span>الرئيسية</button>
@@ -353,6 +438,39 @@ body{
     <button class="fab" onclick="go('scan')"><span class="ni">📷</span></button>
     <button data-s="wallet" onclick="go('wallet')"><span class="ni">💳</span>المحفظة</button>
     <button data-s="settings" onclick="go('settings')"><span class="ni">⚙️</span>الإعدادات</button>
+  </div>
+</div>
+
+<!-- ORDER SHEET (الميزة 1: دبوس الموقع) -->
+<div class="sheet-bg" id="orderSheet">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div class="num" style="width:46px;height:46px;font-size:18px">📦</div>
+      <div style="flex:1"><b id="shtName" style="font-size:19px;font-weight:800;display:block"></b>
+      <small id="shtArea" style="color:var(--text-soft)"></small></div>
+    </div>
+    <div class="pin-box" id="shtPin">الموقع</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border-radius:12px;padding:12px 14px;margin-top:10px" id="shtCodWrap">
+      <span style="font-size:14px;font-weight:600;color:var(--text-soft)">💵 المبلغ المطلوب تحصيله</span>
+      <b id="shtCod" style="font-size:18px;font-weight:800;color:var(--blue-bright)">0 د.ع</b>
+    </div>
+    <div class="field" style="margin:12px 0"><label>📝 ملاحظة المعلم (أقرب نقطة معروفة)</label>
+      <input id="shtLandmark" placeholder="مثال: قرب جامع الرحمن، بناية زرقاء، الطابق 2"></div>
+    <button class="btn btn-ghost btn-sm" onclick="pasteLocation()" style="margin-bottom:12px">📍 لصق رابط موقع الزبون</button>
+    <button class="btn btn-green" onclick="navigateToPin()">🧭 ابدأ الملاحة للموقع</button>
+    <div class="row2" style="margin-top:10px">
+      <button class="btn btn-primary btn-sm" onclick="callCustomer()">📞 اتصال</button>
+      <button class="btn btn-ghost btn-sm" onclick="requestLocationWA()" style="background:#25D366;color:#fff;border:none">💬 اطلب موقعه</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="markDelivered()" style="margin-top:10px">✓ تم التسليم</button>
+    <div class="row2" id="returnBtns" style="margin-top:8px">
+      <button class="btn btn-ghost btn-sm" onclick="markReturned()" style="color:var(--danger)">↩️ راجع للتاجر</button>
+      <button class="btn btn-ghost btn-sm" onclick="markPostponed()" style="color:var(--warn)">⏳ تأجيل</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="proofBtn" onclick="document.getElementById('proofFile').click()" style="margin-top:8px">📸 إثبات التسليم بصورة</button>
+    <input type="file" id="proofFile" accept="image/*" capture="environment" hidden onchange="proofTaken(event)">
+    <button class="btn btn-ghost btn-sm" onclick="closeSheet()" style="margin-top:8px;background:none;border:none;color:var(--text-soft)">إغلاق</button>
   </div>
 </div>
 
@@ -372,6 +490,7 @@ body{
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>
