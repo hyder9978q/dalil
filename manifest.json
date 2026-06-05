@@ -1,0 +1,15 @@
+{
+  "name": "دليل — ملاحة وطلبات ذكية",
+  "short_name": "دليل",
+  "description": "تطبيق الملاحة والطلبات الذكية لسائقي التوصيل في العراق",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060C1C",
+  "theme_color": "#0B1F4D",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B1F4D">
+<title>دليل — ملاحة وطلبات ذكية</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{
+  --blue-deep:#0B1F4D; --blue:#1E3A8A; --blue-bright:#2563EB; --blue-soft:#3B82F6;
+  --green:#10F58C; --green-dim:#0BC36F;
+  --bg:#F4F6FB; --surface:#FFFFFF; --surface-2:#EEF2FA;
+  --text:#0B1F4D; --text-soft:#5B6B8C; --text-faint:#9AA8C4;
+  --border:#E1E8F5; --shadow:0 8px 28px rgba(11,31,77,.10);
+  --radius:18px; --radius-sm:12px;
+  --danger:#EF4444; --warn:#F59E0B; --ok:#10B981;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+[data-theme="dark"]{
+  --bg:#060C1C; --surface:#0E1A38; --surface-2:#14224A;
+  --text:#EAF0FF; --text-soft:#9DB0D8; --text-faint:#5E7099;
+  --border:#1C2C52; --shadow:0 8px 32px rgba(0,0,0,.5);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:'Tajawal',sans-serif;background:var(--bg);color:var(--text);
+  transition:background .3s,color .3s;-webkit-font-smoothing:antialiased;
+  position:fixed;inset:0;
+}
+.app{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;position:relative;background:var(--bg)}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:calc(16px + var(--safe-t)) 16px 92px;display:none;animation:fade .35s ease}
+.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+::-webkit-scrollbar{width:0}
+
+/* ===== Header ===== */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--blue) 0%,var(--blue-deep) 100%);display:grid;place-items:center;position:relative;overflow:hidden}
+.logo::after{content:"";position:absolute;width:16px;height:16px;border-radius:50% 50% 50% 0;background:var(--green);transform:rotate(45deg);box-shadow:0 0 12px var(--green)}
+.brand h1{font-size:21px;font-weight:800;letter-spacing:-.5px}
+.brand span{font-size:11px;color:var(--text-soft);font-weight:500;display:block;margin-top:-2px}
+.iconbtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);display:grid;place-items:center;cursor:pointer;font-size:19px}
+
+/* ===== Cards ===== */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+.hero{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;border:none;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;top:-40px;left:-40px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(16,245,140,.22),transparent 70%)}
+.hero .lbl{font-size:13px;opacity:.8;font-weight:500}
+.hero .big{font-size:34px;font-weight:800;margin:6px 0;letter-spacing:-1px}
+.hero .big small{font-size:15px;font-weight:500;opacity:.8}
+.hero .row{display:flex;gap:10px;margin-top:14px;position:relative;z-index:1}
+.hero .row>div{flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:10px;backdrop-filter:blur(6px)}
+.hero .row .v{font-size:18px;font-weight:700}
+.hero .row .k{font-size:11px;opacity:.8}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;box-shadow:var(--shadow)}
+.stat .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:18px;margin-bottom:8px}
+.stat .v{font-size:22px;font-weight:800}
+.stat .k{font-size:12px;color:var(--text-soft);font-weight:500}
+.bg-green{background:rgba(16,245,140,.14);color:var(--green-dim)}
+.bg-blue{background:rgba(37,99,235,.12);color:var(--blue-bright)}
+.bg-warn{background:rgba(245,158,11,.14);color:var(--warn)}
+.bg-purple{background:rgba(139,92,246,.14);color:#8B5CF6}
+
+.section-title{font-size:16px;font-weight:700;margin:6px 2px 12px;display:flex;align-items:center;justify-content:space-between}
+.section-title a{font-size:13px;color:var(--blue-bright);font-weight:500;cursor:pointer}
+
+/* ===== Order item ===== */
+.order{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;transition:transform .15s}
+.order:active{transform:scale(.98)}
+.order .num{width:40px;height:40px;border-radius:11px;background:var(--surface-2);display:grid;place-items:center;font-weight:800;color:var(--blue-bright);flex-shrink:0}
+.order .info{flex:1;min-width:0}
+.order .info b{font-size:15px;font-weight:700;display:block}
+.order .info small{font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:4px;margin-top:2px}
+.badge{font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;white-space:nowrap}
+.b-pending{background:rgba(245,158,11,.15);color:var(--warn)}
+.b-delivering{background:rgba(37,99,235,.15);color:var(--blue-bright)}
+.b-done{background:rgba(16,185,129,.15);color:var(--ok)}
+
+/* ===== Buttons ===== */
+.btn{width:100%;padding:16px;border:none;border-radius:14px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .15s,opacity .2s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--blue-bright),var(--blue));color:#fff}
+.btn-green{background:linear-gradient(135deg,var(--green),var(--green-dim));color:#04321f}
+.btn-ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:11px;font-size:14px;border-radius:11px}
+
+/* ===== Map ===== */
+#map{height:100%;width:100%}
+.map-screen{padding:0!important;position:relative}
+.map-overlay{position:absolute;top:calc(14px + var(--safe-t));left:14px;right:14px;z-index:500;display:flex;gap:10px}
+.map-overlay .iconbtn{box-shadow:var(--shadow)}
+.map-card{position:absolute;bottom:106px;left:14px;right:14px;z-index:500;background:var(--surface);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.eta-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(16,245,140,.16);color:var(--green-dim);padding:6px 12px;border-radius:20px;font-weight:700;font-size:13px;margin-bottom:10px}
+
+/* ===== Scanner ===== */
+.scan-zone{aspect-ratio:1;border:2px dashed var(--blue-soft);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--text-soft);background:var(--surface);margin-bottom:16px;text-align:center;padding:20px}
+.scan-zone .ic{width:70px;height:70px;border-radius:50%;background:rgba(37,99,235,.1);display:grid;place-items:center;font-size:32px}
+#scanImg{max-width:100%;border-radius:var(--radius);margin-bottom:14px;display:none}
+
+/* ===== Lock screen ===== */
+.lock{position:fixed;inset:0;z-index:9000;background:linear-gradient(160deg,var(--blue-deep),#04102e);color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
+.lock.show{display:flex}
+.lock .ic{width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:44px;margin-bottom:24px;border:1px solid rgba(255,255,255,.15)}
+.lock h2{font-size:26px;font-weight:800;margin-bottom:10px}
+.lock p{color:#A9BBE3;font-size:15px;line-height:1.7;max-width:320px;margin-bottom:28px}
+.plans{display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px}
+.plan{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:.2s}
+.plan:active{transform:scale(.98)}
+.plan.best{border-color:var(--green);background:rgba(16,245,140,.1)}
+.plan .l{text-align:right}
+.plan .l b{font-size:17px;font-weight:700;display:block}
+.plan .l small{font-size:12px;color:#A9BBE3}
+.plan .p{font-size:18px;font-weight:800;color:var(--green)}
+.plan .p small{font-size:11px;color:#A9BBE3;font-weight:500;display:block}
+
+/* ===== Forms ===== */
+.field{margin-bottom:14px}
+.field label{font-size:13px;font-weight:600;color:var(--text-soft);display:block;margin-bottom:6px;padding-right:2px}
+.field input,.field select{width:100%;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font-family:inherit;font-size:15px;font-weight:500}
+.field input:focus,.field select:focus{outline:none;border-color:var(--blue-bright)}
+
+/* ===== Auth ===== */
+.auth{height:100%;display:flex;flex-direction:column;justify-content:center;padding:30px;background:linear-gradient(160deg,var(--blue-deep),#04102e)}
+.auth .brand-big{text-align:center;margin-bottom:36px;color:#fff}
+.auth .logo-big{width:80px;height:80px;border-radius:22px;background:linear-gradient(135deg,var(--blue),var(--blue-deep));margin:0 auto 16px;display:grid;place-items:center;position:relative;border:1px solid rgba(255,255,255,.1)}
+.auth .logo-big::after{content:"";position:absolute;width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--green);transform:rotate(45deg);box-shadow:0 0 20px var(--green)}
+.auth h1{font-size:30px;font-weight:800}
+.auth p{color:#A9BBE3;font-size:14px;margin-top:4px}
+.auth .field label{color:#A9BBE3}
+.auth .field input,.auth .field select{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);color:#fff}
+.auth-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:24px}
+.trial-tag{text-align:center;color:var(--green);font-size:13px;font-weight:600;margin-top:16px}
+
+/* ===== Bottom nav ===== */
+.nav{position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;padding:8px 8px calc(8px + var(--safe-b));z-index:1000}
+.nav button{flex:1;background:none;border:none;color:var(--text-faint);font-family:inherit;font-size:10px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:6px;position:relative}
+.nav button .ni{font-size:21px;line-height:1}
+.nav button.active{color:var(--blue-bright)}
+.nav .fab{flex:0 0 56px}
+.nav .fab .ni{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--green-dim));color:#04321f;display:grid;place-items:center;font-size:26px;margin-top:-22px;box-shadow:0 6px 18px rgba(16,245,140,.4)}
+
+/* ===== Ad banner ===== */
+.ad{border-radius:var(--radius);overflow:hidden;margin-bottom:14px;position:relative;background:linear-gradient(120deg,#8B5CF6,#6366F1);color:#fff;padding:18px;box-shadow:var(--shadow)}
+.ad small{font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1px}
+.ad b{font-size:17px;font-weight:800;display:block;margin:4px 0}
+.ad p{font-size:13px;opacity:.9}
+.ad .geo{position:absolute;top:14px;left:14px;background:rgba(255,255,255,.2);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
+
+/* ===== Toggle / settings ===== */
+.list-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
+.list-item:last-child{border:none}
+.list-item .ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex-shrink:0}
+.list-item .t{flex:1}
+.list-item .t b{font-size:15px;font-weight:700;display:block}
+.list-item .t small{font-size:12px;color:var(--text-soft)}
+.switch{width:48px;height:28px;border-radius:20px;background:var(--border);position:relative;cursor:pointer;transition:.25s;flex-shrink:0}
+.switch.on{background:var(--green-dim)}
+.switch::after{content:"";position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.25s}
+.switch.on::after{right:23px}
+
+/* ===== Toast ===== */
+.toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--blue-deep);color:#fff;padding:13px 22px;border-radius:30px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transition:.35s;max-width:90%;text-align:center}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+
+.empty{text-align:center;padding:40px 20px;color:var(--text-faint)}
+.empty .ic{font-size:48px;margin-bottom:12px}
+.trial-banner{background:linear-gradient(120deg,var(--green-dim),var(--green));color:#04321f;border-radius:14px;padding:12px 16px;font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.row2{display:flex;gap:10px}
+.row2>*{flex:1}
+.mini-label{font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body data-theme="dark">
+
+<!-- ============ AUTH ============ -->
+<div class="auth" id="authScreen">
+  <div class="brand-big">
+    <div class="logo-big"></div>
+    <h1>دليل</h1>
+    <p>الملاحة والطلبات الذكية لسائقي العراق</p>
+  </div>
+  <div class="auth-card">
+    <div class="field"><label>الاسم الكامل</label><input id="rName" placeholder="مثال: حيدر الفاضل"></div>
+    <div class="field"><label>رقم الهاتف</label><input id="rPhone" type="tel" inputmode="numeric" placeholder="07XX XXX XXXX"></div>
+    <div class="field"><label>نوع المركبة</label>
+      <select id="rVehicle">
+        <option>دراجة نارية</option><option>سيارة</option><option>دراجة هوائية</option><option>شاحنة صغيرة</option>
+      </select>
+    </div>
+    <button class="btn btn-green" onclick="doRegister()">ابدأ التجربة المجانية 🚀</button>
+    <div class="trial-tag">✓ 3 أيام مجانية — بدون بطاقة دفع</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app" id="app" style="display:none">
+
+  <!-- HOME -->
+  <div class="screen active" id="s-home">
+    <div class="topbar">
+      <div class="brand"><div class="logo"></div><div><h1>دليل</h1><span id="greet">مرحباً</span></div></div>
+      <button class="iconbtn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+    </div>
+    <div class="trial-banner" id="trialBanner">⏱️ <span id="trialText">باقي 3 أيام من التجربة المجانية</span></div>
+    <div class="card hero">
+      <div class="lbl">أرباح اليوم</div>
+      <div class="big" id="todayEarn">0 <small>د.ع</small></div>
+      <div class="row">
+        <div><div class="v" id="hDelivered">0</div><div class="k">طلب مكتمل</div></div>
+        <div><div class="v" id="hDistance">0 كم</div><div class="k">المسافة</div></div>
+        <div><div class="v" id="hTime">0 س</div><div class="k">وقت العمل</div></div>
+      </div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="ic bg-blue">📦</div><div class="v" id="sActive">0</div><div class="k">طلبات نشطة</div></div>
+      <div class="stat"><div class="ic bg-green">⭐</div><div class="v">4.9</div><div class="k">تقييمك</div></div>
+    </div>
+
+    <div class="ad" id="homeAd">
+      <span class="geo">📍 بغداد - الكرادة</span>
+      <small>إعلان ممول</small>
+      <b>مطعم الرشيد — خصم 20%</b>
+      <p>اطلب وجبتك أثناء التوصيل واحصل على خصم خاص للسائقين</p>
+    </div>
+
+    <div class="section-title">الطلبات الحالية <a onclick="go('orders')">عرض الكل</a></div>
+    <div id="homeOrders"></div>
+  </div>
+
+  <!-- ORDERS -->
+  <div class="screen" id="s-orders">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>الطلبات</h1></div></div>
+    <div class="row2" style="margin-bottom:16px">
+      <button class="btn btn-primary btn-sm" onclick="go('map')">🗺️ تحسين المسار</button>
+      <button class="btn btn-green btn-sm" onclick="go('scan')">📷 مسح طلب</button>
+    </div>
+    <div id="allOrders"></div>
+  </div>
+
+  <!-- MAP -->
+  <div class="screen map-screen" id="s-map">
+    <div class="map-overlay">
+      <button class="iconbtn" onclick="go('home')">→</button>
+      <div style="flex:1"></div>
+      <button class="iconbtn" onclick="voiceCmd()">🎙️</button>
+      <button class="iconbtn" onclick="optimizeRoute()" title="تحسين">⚡</button>
+    </div>
+    <div id="map"></div>
+    <div class="map-card">
+      <div class="eta-pill">⚡ مسار محسّن حسب أقل وقت</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b style="font-size:20px" id="routeStops">0 محطات</b><br><small style="color:var(--text-soft)" id="routeEta">احسب المسار</small></div>
+        <button class="btn btn-green btn-sm" style="width:auto;padding:12px 20px" onclick="toast('بدأت الملاحة 🧭')">ابدأ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCANNER -->
+  <div class="screen" id="s-scan">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>مسح الطلب</h1></div>
+      <button class="iconbtn" onclick="go('home')">→</button></div>
+    <img id="scanImg">
+    <div class="scan-zone" id="scanZone" onclick="document.getElementById('scanFile').click()">
+      <div class="ic">📸</div>
+      <div><b style="font-size:16px;color:var(--text)">صوّر الطلب</b><br>سيقرأ الذكاء الاصطناعي المعلومات تلقائياً</div>
+    </div>
+    <input type="file" id="scanFile" accept="image/*" capture="environment" hidden onchange="handleScan(event)">
+    <div id="scanResult"></div>
+  </div>
+
+  <!-- WALLET / PAYMENTS -->
+  <div class="screen" id="s-wallet">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>المحفظة</h1></div></div>
+    <div class="card hero">
+      <div class="lbl">حالة الاشتراك</div>
+      <div class="big" id="subStatus">تجريبي</div>
+      <div style="position:relative;z-index:1;font-size:13px;opacity:.85" id="subExpiry"></div>
+      <button class="btn btn-green btn-sm" style="margin-top:14px" onclick="showLock()">تجديد / ترقية الاشتراك</button>
+    </div>
+    <div class="section-title">طرق الدفع المتاحة</div>
+    <div class="card">
+      <div class="list-item"><div class="ic bg-purple">💳</div><div class="t"><b>زين كاش</b><small id="zainNum">07901234567</small></div><span class="badge b-done">مفعّل</span></div>
+      <div class="list-item"><div class="ic bg-blue">🏦</div><div class="t"><b>كي كارد (Qi Card)</b><small id="qiNum">1234-5678-9012</small></div><span class="badge b-done">مفعّل</span></div>
+      <div class="list-item"><div class="ic bg-green">💵</div><div class="t"><b>آسيا حوالة</b><small>تحويل يدوي</small></div><span class="badge b-pending">قريباً</span></div>
+    </div>
+    <div class="section-title">سجل الدفعات</div>
+    <div class="card" id="payLog">
+      <div class="empty"><div class="ic">🧾</div>لا توجد دفعات بعد</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="screen" id="s-settings">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>الإعدادات</h1></div></div>
+    <div class="card">
+      <div class="list-item"><div class="ic bg-blue">👤</div><div class="t"><b id="setName">السائق</b><small id="setPhone"></small></div></div>
+      <div class="list-item"><div class="ic bg-purple">🌙</div><div class="t"><b>الوضع الليلي</b><small>مريح للعين أثناء القيادة</small></div><div class="switch on" id="swTheme" onclick="toggleTheme()"></div></div>
+      <div class="list-item"><div class="ic bg-green">🔋</div><div class="t"><b>وضع توفير الوقود</b><small>اقتراح مسارات اقتصادية</small></div><div class="switch on" id="swEco"></div></div>
+      <div class="list-item"><div class="ic bg-warn">🔔</div><div class="t"><b>الإشعارات</b><small>طلبات وتنبيهات جديدة</small></div><div class="switch on" id="swNotif"></div></div>
+    </div>
+    <div class="section-title">لوحة الإدارة (للأدمن)</div>
+    <div class="card">
+      <div class="list-item" onclick="go('admin')" style="cursor:pointer"><div class="ic bg-blue">⚙️</div><div class="t"><b>إعدادات النظام</b><small>المحافظ، الإعلانات، الرسائل</small></div><span style="color:var(--text-faint)">←</span></div>
+    </div>
+    <button class="btn btn-ghost" onclick="logout()" style="margin-top:8px">تسجيل الخروج</button>
+    <div style="text-align:center;color:var(--text-faint);font-size:12px;margin-top:20px">دليل — الإصدار 1.0 — صُنع في العراق 🇮🇶</div>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="screen" id="s-admin">
+    <div class="topbar"><div class="brand"><div class="logo"></div><h1>لوحة الإدارة</h1></div>
+      <button class="iconbtn" onclick="go('settings')">→</button></div>
+    <div class="section-title">إعدادات المحافظ</div>
+    <div class="card">
+      <div class="field"><label>رقم زين كاش</label><input id="aZain" value="07901234567"></div>
+      <div class="field"><label>رقم كي كارد</label><input id="aQi" value="1234-5678-9012"></div>
+      <button class="btn btn-primary btn-sm" onclick="saveAdmin()">حفظ</button>
+    </div>
+    <div class="section-title">رسالة شاشة القفل</div>
+    <div class="card">
+      <div class="field"><input id="aLockMsg" value="انتهت تجربتك المجانية. جدّد للاستمرار."></div>
+    </div>
+    <div class="section-title">التحكم بالإعلانات</div>
+    <div class="card">
+      <div class="list-item"><div class="ic bg-purple">📢</div><div class="t"><b>تفعيل الإعلانات</b></div><div class="switch on" id="swAds"></div></div>
+      <div class="list-item"><div class="ic bg-warn">🚫</div><div class="t"><b>منع تخطي الإعلان</b><small>إجبار المشاهدة الكاملة</small></div><div class="switch" id="swNoSkip"></div></div>
+    </div>
+    <div class="section-title">التحليل المالي</div>
+    <div class="card">
+      <div class="stat-grid" style="margin:0">
+        <div class="stat" style="box-shadow:none;border:none;padding:8px"><div class="v">142</div><div class="k">مشترك نشط</div></div>
+        <div class="stat" style="box-shadow:none;border:none;padding:8px"><div class="v">2.1M</div><div class="k">إيراد شهري (د.ع)</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="nav">
+    <button class="active" data-s="home" onclick="go('home')"><span class="ni">🏠</span>الرئيسية</button>
+    <button data-s="orders" onclick="go('orders')"><span class="ni">📦</span>الطلبات</button>
+    <button class="fab" onclick="go('scan')"><span class="ni">📷</span></button>
+    <button data-s="wallet" onclick="go('wallet')"><span class="ni">💳</span>المحفظة</button>
+    <button data-s="settings" onclick="go('settings')"><span class="ni">⚙️</span>الإعدادات</button>
+  </div>
+</div>
+
+<!-- LOCK SCREEN -->
+<div class="lock" id="lockScreen">
+  <div class="ic">🔒</div>
+  <h2>اشتراكك منتهي</h2>
+  <p id="lockMsg">انتهت تجربتك المجانية. اختر باقة لمواصلة استخدام دليل.</p>
+  <div class="plans">
+    <div class="plan" onclick="subscribe('يومي',2000,1)"><div class="l"><b>باقة يومية</b><small>مرونة كاملة</small></div><div class="p">2,000<small>د.ع / يوم</small></div></div>
+    <div class="plan" onclick="subscribe('أسبوعي',5000,7)"><div class="l"><b>باقة أسبوعية</b><small>وفّر 30%</small></div><div class="p">5,000<small>د.ع / أسبوع</small></div></div>
+    <div class="plan best" onclick="subscribe('شهري',15000,30)"><div class="l"><b>باقة شهرية ⭐</b><small>الأفضل قيمة</small></div><div class="p">15,000<small>د.ع / شهر</small></div></div>
+  </div>
+  <button class="btn btn-ghost" style="max-width:340px;margin-top:16px;background:rgba(255,255,255,.06);color:#fff;border-color:rgba(255,255,255,.12)" onclick="closeLock()">لاحقاً</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
