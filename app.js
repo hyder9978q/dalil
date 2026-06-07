@@ -271,11 +271,33 @@ function openOrder(id){
 function closeSheet(){ document.getElementById('orderSheet').classList.remove('show'); }
 
 // ملاحة مباشرة لدبوس الموقع (يفتح خرائط جوجل بالإحداثيات لا بالعنوان)
+let gpsWatcher = null;
 function navigateToPin(){
   if(!currentOrder.lat){ toast('لا يوجد موقع محدد لهذا الطلب'); return; }
   saveLandmark();
+  // بدء بث موقع المندوب للتتبع الحي
+  startBroadcast(currentOrder.id);
+  // تحديث حالة الطلب إلى "قيد التوصيل"
+  if(currentOrder.status==='pending'){
+    currentOrder.status='delivering';
+    cloudOrder(currentOrder.id, {status:'delivering'});
+  }
   const url = `https://www.google.com/maps/dir/?api=1&destination=${currentOrder.lat},${currentOrder.lng}&travelmode=driving`;
   window.open(url, '_blank');
+  toast('🛵 بدأ التتبع الحي — الزبون يرى موقعك');
+}
+
+// بث موقع المندوب كل 15 ثانية لـ Supabase
+function startBroadcast(orderId){
+  if(!navigator.geolocation){ return; }
+  if(gpsWatcher) navigator.geolocation.clearWatch(gpsWatcher);
+  gpsWatcher = navigator.geolocation.watchPosition(pos=>{
+    const {latitude:lat, longitude:lng} = pos.coords;
+    if(sb) sb.from('orders').update({driver_lat:lat, driver_lng:lng}).eq('id',orderId).then(()=>{});
+  }, null, {enableHighAccuracy:true, maximumAge:15000});
+}
+function stopBroadcast(){
+  if(gpsWatcher){ navigator.geolocation.clearWatch(gpsWatcher); gpsWatcher=null; }
 }
 // اتصال بالزبون
 function callCustomer(){ window.location.href = 'tel:' + currentOrder.phone; }
@@ -309,6 +331,7 @@ function parseCoords(link){
 }
 function markDelivered(){
   saveLandmark();
+  stopBroadcast();
   currentOrder.status = 'delivered';
   cloudOrder(currentOrder.id, {status:'delivered', landmark:currentOrder.landmark||null, lat:currentOrder.lat, lng:currentOrder.lng, proof:!!currentOrder.proof});
   recomputeStats();
@@ -425,32 +448,84 @@ function shareStatement(){
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
-// ===== ميزة 3: صفحة تتبع الطلب العامة (بدون تسجيل دخول) =====
+// ===== ميزة 3: صفحة تتبع الطلب الحية بالخريطة =====
+let trackMap = null, trackDriverMarker = null, trackPollTimer = null;
+
 async function showTracking(orderId){
   document.getElementById('authScreen').style.display='none';
   document.getElementById('app').style.display='none';
   const el = document.getElementById('trackScreen');
-  el.style.display='flex';
+  el.style.cssText = 'display:flex;flex-direction:column;height:100%;background:var(--bg)';
+  el.innerHTML = `
+    <div style="padding:16px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border)">
+      <div class="logo" style="width:36px;height:36px;border-radius:10px;flex-shrink:0"></div>
+      <div><b style="font-size:16px">دليل</b><div style="font-size:12px;color:var(--text-soft)">تتبّع طلبك #${orderId}</div></div>
+    </div>
+    <div id="tMap" style="flex:1;min-height:0"></div>
+    <div id="tInfo" style="padding:16px;background:var(--surface);border-top:1px solid var(--border)">
+      <div style="text-align:center;color:var(--text-soft)">جاري التحميل...</div>
+    </div>`;
+  await loadTrackData(orderId);
+}
+
+async function loadTrackData(orderId){
   try{
-    const {data:o} = await sb.from('orders').select('customer,area,gov,status,created_at').eq('id',orderId).single();
-    if(!o){ el.innerHTML='<div class="track-card"><div style="font-size:48px">❓</div><h2>الطلب غير موجود</h2><p>تحقق من الرابط</p></div>'; return; }
-    const icons = {pending:'⏳',delivering:'🚛',delivered:'✅',returned:'↩️',postponed:'🔄'};
-    const labels = {pending:'قيد الانتظار',delivering:'في الطريق إليك',delivered:'تم التسليم ✓',returned:'تم الإرجاع',postponed:'مؤجل'};
+    const {data:o} = await sb.from('orders')
+      .select('customer,area,gov,status,lat,lng,driver_lat,driver_lng')
+      .eq('id', orderId).single();
+    if(!o){ document.getElementById('tInfo').innerHTML='<div style="text-align:center;color:var(--danger)">الطلب غير موجود</div>'; return; }
+
+    // بناء الخريطة
+    if(!trackMap){
+      trackMap = L.map('tMap',{zoomControl:false,attributionControl:false});
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(trackMap);
+    }
+
+    // دبوس موقع الزبون (ثابت)
+    if(o.lat && o.lng){
+      const destIcon = L.divIcon({className:'', html:`<div style="background:#10F58C;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(16,245,140,.6)"></div>`, iconSize:[18,18], iconAnchor:[9,9]});
+      L.marker([o.lat,o.lng],{icon:destIcon}).addTo(trackMap).bindPopup('موقع التسليم');
+    }
+
+    // دبوس المندوب الحي (يتحرك)
+    if(o.driver_lat && o.driver_lng){
+      const driverIcon = L.divIcon({className:'', html:`<div style="background:#2563EB;width:22px;height:22px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font-size:11px;box-shadow:0 2px 10px rgba(37,99,235,.7)">🛵</div>`, iconSize:[22,22], iconAnchor:[11,11]});
+      if(trackDriverMarker) trackMap.removeLayer(trackDriverMarker);
+      trackDriverMarker = L.marker([o.driver_lat,o.driver_lng],{icon:driverIcon}).addTo(trackMap).bindPopup('موقع المندوب');
+      // عرض خط من المندوب للزبون
+      if(o.lat && o.lng) L.polyline([[o.driver_lat,o.driver_lng],[o.lat,o.lng]],{color:'#2563EB',weight:2,dashArray:'5 5',opacity:.6}).addTo(trackMap);
+    }
+
+    // ضبط حدود الخريطة
+    const pts = [[o.lat||BAGHDAD[0], o.lng||BAGHDAD[1]]];
+    if(o.driver_lat) pts.push([o.driver_lat, o.driver_lng]);
+    trackMap.fitBounds(pts.length>1 ? L.latLngBounds(pts).pad(.3) : [[pts[0][0]-.01,pts[0][1]-.01],[pts[0][0]+.01,pts[0][1]+.01]]);
+
+    // بطاقة الحالة
+    const icons  = {pending:'⏳',delivering:'🚛',delivered:'✅',returned:'↩️',postponed:'🔄'};
+    const labels = {pending:'قيد الانتظار',delivering:'المندوب في الطريق إليك',delivered:'تم التسليم ✓',returned:'تم الإرجاع',postponed:'مؤجل'};
     const colors = {pending:'#F59E0B',delivering:'#2563EB',delivered:'#10F58C',returned:'#EF4444',postponed:'#8B5CF6'};
     const c = colors[o.status]||'#2563EB';
-    el.innerHTML=`
-    <div class="track-card">
-      <div class="logo" style="margin-bottom:12px"></div>
-      <h2 style="margin-bottom:4px">تتبّع طلبك</h2>
-      <small style="color:var(--text-soft)">رقم الطلب: #${orderId}</small>
-      <div style="font-size:64px;margin:20px 0">${icons[o.status]||'📦'}</div>
-      <div style="font-size:22px;font-weight:800;color:${c};margin-bottom:8px">${labels[o.status]||o.status}</div>
-      <div style="color:var(--text-soft);font-size:14px">${o.gov||''} ${o.area||''}</div>
-      <div style="margin-top:24px;padding:14px;background:var(--surface-2);border-radius:12px;font-size:13px;color:var(--text-soft)">
-        🛵 يتم التوصيل عبر <b style="color:var(--text)">دليل</b>
+    document.getElementById('tInfo').innerHTML=`
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:32px">${icons[o.status]||'📦'}</div>
+        <div style="flex:1">
+          <div style="font-size:17px;font-weight:800;color:${c}">${labels[o.status]||o.status}</div>
+          <div style="font-size:13px;color:var(--text-soft);margin-top:2px">📍 ${o.gov||''} — ${o.area||''}</div>
+        </div>
+        ${o.status==='delivering'?'<div style="font-size:11px;color:var(--text-faint)">يتجدد كل 10 ث</div>':''}
       </div>
-    </div>`;
-  }catch(e){ el.innerHTML='<div class="track-card"><div style="font-size:48px">⚠️</div><h2>تعذّر التحميل</h2></div>'; }
+      <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:10px;font-size:12px;color:var(--text-soft);text-align:center">
+        🛵 يتم التوصيل عبر <b style="color:var(--text)">دليل</b>
+      </div>`;
+
+    // تحديث تلقائي كل 10 ثوانٍ إذا كان في الطريق
+    clearInterval(trackPollTimer);
+    if(o.status==='delivering'){
+      const id = orderId;
+      trackPollTimer = setInterval(()=>loadTrackData(id), 10000);
+    }
+  }catch(e){ document.getElementById('tInfo').innerHTML='<div style="text-align:center;color:var(--danger)">تعذّر التحميل</div>'; }
 }
 
 // نسخ رابط تتبع الطلب
