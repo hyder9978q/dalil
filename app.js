@@ -175,27 +175,62 @@ function go(screen){
 async function initDriverMap(){
   if(dmap && dmap._maplibre){ loadDriversOnMap(false); return; }
   await new Promise(r=>setTimeout(r,150));
-  const dark = document.body.dataset.theme==='dark';
-  const style = dark
-    ? 'https://tiles.openfreemap.org/styles/dark'
-    : 'https://tiles.openfreemap.org/styles/liberty';
+  // نستخدم dark-matter كأساس نظيف ونبني فوقه
   dmap = new maplibregl.Map({
-    container:'dmap', style, attributionControl:false,
+    container:'dmap',
+    style:'https://tiles.openfreemap.org/styles/dark',
+    attributionControl:false,
     center:[BAGHDAD[1],BAGHDAD[0]], zoom:11
   });
   dmap._maplibre = true;
   dmap.on('load',()=>{
-    // ثيم Velocity Blue المخصص
-    try{
-      if(dark){
-        dmap.setPaintProperty('background','background-color','#060C1C');
-        dmap.setPaintProperty('water','fill-color','#0B1F4D');
-      }
-    }catch(e){}
+    applyVelocityBlue();
+    forceArabicLabels();
     loadDriversOnMap(false);
   });
   clearInterval(dmapTimer);
   dmapTimer = setInterval(()=>loadDriversOnMap(false), 15000);
+}
+
+// ===== ثيم Velocity Blue الكامل =====
+function applyVelocityBlue(){
+  const p = (layer, prop, val)=>{ try{ dmap.setPaintProperty(layer,prop,val); }catch(e){} };
+  const l = (layer, prop, val)=>{ try{ dmap.setLayoutProperty(layer,prop,val); }catch(e){} };
+  // خلفية وأرض
+  p('background','background-color','#040D1E');
+  p('landuse','fill-color','#060C1C');
+  p('landuse_overlay','fill-color','#060C1C');
+  // الماء — أزرق عميق
+  p('water','fill-color','#0B1F4D');
+  p('waterway','line-color','#0B1F4D');
+  // المباني — داكنة مع حافة ناعمة
+  p('building','fill-color','#0A1628');
+  p('building','fill-outline-color','#112040');
+  // الشوارع — تدرج من الأزرق للفسفوري
+  p('road_path','line-color','#0F2244');
+  p('road_minor','line-color','#1E3A8A');
+  p('road_secondary_tertiary','line-color','#2563EB');
+  p('road_primary','line-color','#3B82F6');
+  p('road_major_motorway','line-color','#60A5FA');
+  p('road_motorway','line-color','#60A5FA');
+  // التسميات — أبيض ناصع
+  const textLayers = dmap.getStyle().layers.filter(l=>l.type==='symbol');
+  textLayers.forEach(lr=>{
+    p(lr.id,'text-color','#E2E8F5');
+    p(lr.id,'text-halo-color','#040D1E');
+    p(lr.id,'text-halo-width',1.5);
+  });
+}
+
+// ===== إجبار الأسماء العربية فقط =====
+function forceArabicLabels(){
+  const layers = dmap.getStyle().layers.filter(l=>l.type==='symbol');
+  layers.forEach(lr=>{
+    try{
+      dmap.setLayoutProperty(lr.id,'text-field',
+        ['coalesce',['get','name:ar'],['get','name_ar'],['get','name']]);
+    }catch(e){}
+  });
 }
 
 async function loadDriversOnMap(isLeaflet){
