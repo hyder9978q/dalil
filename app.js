@@ -52,6 +52,9 @@ let user = null, map = null, markers = [], routeLine = null;
 // ===== تهيئة =====
 async function init(){
   applyTheme();
+  // الميزة: رابط تتبع الطلب العام (?track=ID)
+  const params = new URLSearchParams(location.search);
+  if(params.has('track')){ showTracking(params.get('track')); return; }
   if(!sb){ document.getElementById('authScreen').style.display='flex'; return; }
   const cid = LOCAL.id();
   if(cid){
@@ -240,7 +243,10 @@ function renderOrders(target, limit){
     return `<div class="order" onclick="openOrder(${o.id})">
       <div class="num">${o.id}</div>
       <div class="info"><b>${o.customer}</b><small>📍 ${loc}${cod}</small></div>
-      <span class="badge ${b[0]}">${b[1]}</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="badge ${b[0]}">${b[1]}</span>
+        <span style="font-size:10px;color:var(--text-faint);cursor:pointer" onclick="event.stopPropagation();copyTrackLink(${o.id})">🔗 رابط التتبع</span>
+      </div>
     </div>`;
   }).join('');
 }
@@ -368,6 +374,89 @@ function renderSettlement(collected){
   document.getElementById('setReturned').textContent = (user.returned||0) + ' طرد';
   document.getElementById('returnRow').style.display = cfg.returns ? 'flex' : 'none';
   document.getElementById('toCompanyRow').style.display = cfg.cod ? 'flex' : 'none';
+}
+
+// ===== ميزة 1: تقرير اليوم جاهز للواتساب (لصاحب الشركة) =====
+function shareReport(){
+  const delivered = ORDERS.filter(o=>o.status==='delivered');
+  const returned  = ORDERS.filter(o=>o.status==='returned');
+  const pending   = ORDERS.filter(o=>o.status==='pending'||o.status==='delivering');
+  const codTotal  = delivered.reduce((s,o)=>s+(o.cod||0),0);
+  const earn      = user.delivered * (cfg.fee||2000);
+  const toReturn  = Math.max(0, codTotal - earn);
+  const company   = user.name || 'شركتي';
+  const date      = new Date().toLocaleDateString('ar-IQ');
+  const msg =
+`📦 *تقرير ${company} — ${date}*
+
+✅ مسلّم: ${delivered.length} طرد
+↩️ راجع: ${returned.length} طرد
+⏳ بالانتظار: ${pending.length} طرد
+
+💵 كاش محصّل: ${codTotal.toLocaleString()} د.ع
+💰 أجرة المندوب: ${earn.toLocaleString()} د.ع
+🏢 يُسلَّم للشركة: ${toReturn.toLocaleString()} د.ع
+
+🛵 *دليل — نظام التوصيل الذكي*`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// ===== ميزة 2: كشف حساب المندوب المشارَك (لحماية حقوقه) =====
+function shareStatement(){
+  const d = user.delivered||0;
+  const r = user.returned||0;
+  const cash = user.cashCollected||0;
+  const earn = d * (cfg.fee||2000);
+  const toCompany = Math.max(0, cash - earn);
+  const date = new Date().toLocaleDateString('ar-IQ');
+  const msg =
+`📋 *كشف حسابي — ${date}*
+
+اسم المندوب: ${user.name}
+رقم الهاتف: ${user.phone}
+
+📦 طرود مسلّمة: ${d}
+↩️ طرود راجعة: ${r}
+💵 كاش محصّل: ${cash.toLocaleString()} د.ع
+💰 أجرتي المستحقة: ${earn.toLocaleString()} د.ع
+🏢 سأسلّم للشركة: ${toCompany.toLocaleString()} د.ع
+
+✅ تم التوثيق عبر تطبيق دليل`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// ===== ميزة 3: صفحة تتبع الطلب العامة (بدون تسجيل دخول) =====
+async function showTracking(orderId){
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('app').style.display='none';
+  const el = document.getElementById('trackScreen');
+  el.style.display='flex';
+  try{
+    const {data:o} = await sb.from('orders').select('customer,area,gov,status,created_at').eq('id',orderId).single();
+    if(!o){ el.innerHTML='<div class="track-card"><div style="font-size:48px">❓</div><h2>الطلب غير موجود</h2><p>تحقق من الرابط</p></div>'; return; }
+    const icons = {pending:'⏳',delivering:'🚛',delivered:'✅',returned:'↩️',postponed:'🔄'};
+    const labels = {pending:'قيد الانتظار',delivering:'في الطريق إليك',delivered:'تم التسليم ✓',returned:'تم الإرجاع',postponed:'مؤجل'};
+    const colors = {pending:'#F59E0B',delivering:'#2563EB',delivered:'#10F58C',returned:'#EF4444',postponed:'#8B5CF6'};
+    const c = colors[o.status]||'#2563EB';
+    el.innerHTML=`
+    <div class="track-card">
+      <div class="logo" style="margin-bottom:12px"></div>
+      <h2 style="margin-bottom:4px">تتبّع طلبك</h2>
+      <small style="color:var(--text-soft)">رقم الطلب: #${orderId}</small>
+      <div style="font-size:64px;margin:20px 0">${icons[o.status]||'📦'}</div>
+      <div style="font-size:22px;font-weight:800;color:${c};margin-bottom:8px">${labels[o.status]||o.status}</div>
+      <div style="color:var(--text-soft);font-size:14px">${o.gov||''} ${o.area||''}</div>
+      <div style="margin-top:24px;padding:14px;background:var(--surface-2);border-radius:12px;font-size:13px;color:var(--text-soft)">
+        🛵 يتم التوصيل عبر <b style="color:var(--text)">دليل</b>
+      </div>
+    </div>`;
+  }catch(e){ el.innerHTML='<div class="track-card"><div style="font-size:48px">⚠️</div><h2>تعذّر التحميل</h2></div>'; }
+}
+
+// نسخ رابط تتبع الطلب
+function copyTrackLink(id){
+  const link = `${location.origin}${location.pathname}?track=${id}`;
+  navigator.clipboard.writeText(link).then(()=>toast('✓ تم نسخ رابط التتبع'));
 }
 
 function renderSettings(){

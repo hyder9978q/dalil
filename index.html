@@ -222,6 +222,9 @@ body{
 </div>
 
 <!-- ============ APP ============ -->
+<!-- شاشة تتبع الطلب العامة (بدون تسجيل دخول) -->
+<div id="trackScreen" style="display:none;position:fixed;inset:0;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px;z-index:9999"></div>
+
 <div class="app" id="app" style="display:none">
 
   <!-- HOME -->
@@ -328,6 +331,13 @@ body{
       <div class="list-item"><div class="ic bg-green">💰</div><div class="t"><b>أجرتك المستحقة</b><small id="setFormula"></small></div><b id="setEarn" style="color:var(--green-dim)">0</b></div>
       <div class="list-item" id="toCompanyRow"><div class="ic bg-blue">🏢</div><div class="t"><b>تسلّم للشركة/التاجر</b><small>كاش محصّل ناقص أجرتك</small></div><b id="setToCompany" style="color:var(--blue-bright)">0</b></div>
       <div class="list-item" id="returnRow"><div class="ic bg-warn">↩️</div><div class="t"><b>الراجع</b><small>طرود مرتجعة للتاجر</small></div><b id="setReturned" style="color:var(--warn)">0</b></div>
+      <button class="btn btn-green btn-sm" onclick="shareStatement()" style="margin-top:10px">📤 أرسل كشف حسابي عبر واتساب</button>
+    </div>
+
+    <div class="section-title">📊 تقرير الشركة</div>
+    <div class="card" style="background:linear-gradient(120deg,#25D366,#128C7E);color:#fff;border:none">
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px">أرسل تقرير اليوم للتجار أو الشركاء</div>
+      <button class="btn btn-sm" onclick="shareReport()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3)">📊 مشاركة تقرير اليوم عبر واتساب</button>
     </div>
 
     <div class="section-title">طرق الدفع المتاحة</div>
