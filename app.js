@@ -455,16 +455,23 @@ async function showTracking(orderId){
   document.getElementById('authScreen').style.display='none';
   document.getElementById('app').style.display='none';
   const el = document.getElementById('trackScreen');
-  el.style.cssText = 'display:flex;flex-direction:column;height:100%;background:var(--bg)';
+  // نحتفظ بـ position:fixed;inset:0 ونضيف flex فقط
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+  el.style.padding = '0';
+  el.style.alignItems = 'stretch';
+  el.style.justifyContent = 'flex-start';
   el.innerHTML = `
-    <div style="padding:16px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border)">
+    <div style="padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
       <div class="logo" style="width:36px;height:36px;border-radius:10px;flex-shrink:0"></div>
       <div><b style="font-size:16px">دليل</b><div style="font-size:12px;color:var(--text-soft)">تتبّع طلبك #${orderId}</div></div>
     </div>
-    <div id="tMap" style="flex:1;min-height:0"></div>
-    <div id="tInfo" style="padding:16px;background:var(--surface);border-top:1px solid var(--border)">
+    <div id="tMap" style="flex:1;width:100%"></div>
+    <div id="tInfo" style="padding:14px 16px;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0">
       <div style="text-align:center;color:var(--text-soft)">جاري التحميل...</div>
     </div>`;
+  // ننتظر رسم الـ DOM قبل تهيئة الخريطة
+  await new Promise(r=>setTimeout(r,80));
   await loadTrackData(orderId);
 }
 
