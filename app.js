@@ -153,7 +153,9 @@ async function subscribe(plan, price, days){
   toast(`تم تفعيل الباقة ال${plan} ✓`);
 }
 
-// ===== التنقل =====
+// ===== خريطة المندوبين الحية (Mapbox) =====
+let dmap = null, dmapMarkers = [], dmapTimer = null;
+
 function go(screen){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('s-'+screen).classList.add('active');
@@ -166,6 +168,138 @@ function go(screen){
   if(screen==='settings') renderSettings();
   if(screen==='admin') renderAdmin();
   if(screen==='worksys') renderConfig();
+  if(screen==='drivermap') initDriverMap();
+}
+
+async function initDriverMap(){
+  const token = localStorage.getItem('mapbox_token');
+  if(!token){
+    document.getElementById('dmapCard').innerHTML = `
+      <div style="text-align:center;padding:10px">
+        <b>أضف رمز Mapbox للخريطة الاحترافية</b>
+        <div style="font-size:12px;color:var(--text-soft);margin:6px 0">mapbox.com ← سجّل مجاناً ← انسخ Default public token</div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input id="mbToken" placeholder="pk.eyJ1..." style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          <button class="btn btn-green btn-sm" style="width:auto;padding:10px 16px" onclick="saveMapboxToken()">حفظ</button>
+        </div>
+      </div>`;
+    // استخدم خريطة Leaflet العادية كاحتياط
+    initDriverMapLeaflet(); return;
+  }
+  initDriverMapbox(token);
+}
+
+function saveMapboxToken(){
+  const t = document.getElementById('mbToken').value.trim();
+  if(!t.startsWith('pk.')){ toast('الرمز يجب أن يبدأ بـ pk.'); return; }
+  localStorage.setItem('mapbox_token', t);
+  initDriverMap();
+}
+
+// خريطة Mapbox — ثيم Velocity Blue مخصص
+function initDriverMapbox(token){
+  if(typeof mapboxgl === 'undefined'){ initDriverMapLeaflet(); return; }
+  mapboxgl.accessToken = token;
+  if(dmap){ dmap.remove(); dmap=null; }
+  dmap = new mapboxgl.Map({
+    container:'dmap', style:'mapbox://styles/mapbox/dark-v11',
+    center:[BAGHDAD[1],BAGHDAD[0]], zoom:11,
+    attributionControl:false
+  });
+  dmap.on('load',()=>{
+    // تلوين مخصص يتناسب مع ثيم Velocity Blue
+    dmap.setPaintProperty('background','background-color','#060C1C');
+    dmap.setPaintProperty('water','fill-color','#0B1F4D');
+    try{
+      dmap.setPaintProperty('road-street','line-color','#1E3A8A');
+      dmap.setPaintProperty('road-secondary-tertiary','line-color','#1E3A8A');
+      dmap.setPaintProperty('road-primary','line-color','#2563EB');
+      dmap.setPaintProperty('road-motorway-trunk','line-color','#3B82F6');
+    }catch(e){}
+    loadDriversOnMap(false);
+  });
+  clearInterval(dmapTimer);
+  dmapTimer = setInterval(()=>loadDriversOnMap(false), 15000);
+}
+
+// خريطة Leaflet احتياطية إذا لم يكن Mapbox
+function initDriverMapLeaflet(){
+  if(dmap && dmap._leaflet_id) return;
+  const m = L.map('dmap',{zoomControl:false,attributionControl:false}).setView(BAGHDAD,11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(m);
+  dmap = m; dmap._isLeaflet = true;
+  loadDriversOnMap(true);
+  clearInterval(dmapTimer);
+  dmapTimer = setInterval(()=>loadDriversOnMap(true), 15000);
+}
+
+async function loadDriversOnMap(isLeaflet){
+  if(!user || !sb) return;
+  const {data:orders} = await sb.from('orders')
+    .select('id,customer,area,gov,cod,status,lat,lng,driver_lat,driver_lng')
+    .eq('company_id', user.id)
+    .in('status',['delivering','pending']);
+  if(!orders) return;
+  const active = orders.filter(o=>o.driver_lat && o.status==='delivering');
+  const cashField = active.reduce((s,o)=>s+(o.cod||0),0);
+  document.getElementById('dmActive').textContent = active.length;
+  document.getElementById('dmOrders').textContent = orders.filter(o=>o.status==='delivering').length;
+  document.getElementById('dmCash').textContent = cashField>0 ? Math.round(cashField/1000)+'K' : '0';
+  // قائمة المندوبين
+  document.getElementById('dmDriverList').innerHTML = active.length ?
+    active.map((o,i)=>`<div class="list-item" style="padding:8px 0">
+      <div class="ic bg-blue" style="width:32px;height:32px;font-size:14px">🛵</div>
+      <div class="t"><b style="font-size:13px">${o.customer}</b><small>📍 ${o.area||''}</small></div>
+      <b style="font-size:12px;color:var(--green-dim)">${(o.cod||0).toLocaleString()} د.ع</b>
+    </div>`).join('') :
+    '<div style="text-align:center;color:var(--text-faint);font-size:13px;padding:10px">لا يوجد مندوبون نشطون الآن</div>';
+  if(!isLeaflet) addMapboxDriverMarkers(active, orders);
+  else addLeafletDriverMarkers(active, orders);
+}
+
+function addMapboxDriverMarkers(active, orders){
+  if(!dmap || !dmap.getCanvas) return;
+  // نظّف القديم
+  dmapMarkers.forEach(m=>m.remove()); dmapMarkers=[];
+  // مناطق التسليم (أخضر)
+  orders.filter(o=>o.lat&&o.lng).forEach(o=>{
+    const el = document.createElement('div');
+    el.innerHTML = `<div style="background:#10F58C;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(16,245,140,.5)"></div>`;
+    const m = new mapboxgl.Marker({element:el}).setLngLat([o.lng,o.lat])
+      .setPopup(new mapboxgl.Popup().setHTML(`<b>${o.customer}</b><br>${o.area}`)).addTo(dmap);
+    dmapMarkers.push(m);
+  });
+  // المندوبون (أزرق متحرك)
+  active.forEach((o,i)=>{
+    const el = document.createElement('div');
+    el.innerHTML = `<div style="background:#2563EB;width:36px;height:36px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font-size:16px;box-shadow:0 3px 12px rgba(37,99,235,.7);animation:pulse 2s infinite">🛵</div>`;
+    const m = new mapboxgl.Marker({element:el}).setLngLat([o.driver_lng,o.driver_lat])
+      .setPopup(new mapboxgl.Popup().setHTML(`<b>🛵 توصيل</b><br>${o.customer}<br>💵 ${(o.cod||0).toLocaleString()} د.ع`)).addTo(dmap);
+    dmapMarkers.push(m);
+  });
+  // اضبط الحدود
+  if(active.length){
+    const pts = active.map(o=>new mapboxgl.LngLat(o.driver_lng,o.driver_lat));
+    dmap.fitBounds(mapboxgl.LngLatBounds.fromLngLat(pts[0]).extend(...pts), {padding:80});
+  }
+}
+
+function addLeafletDriverMarkers(active, orders){
+  dmapMarkers.forEach(m=>{try{dmap.removeLayer(m)}catch(e){}}); dmapMarkers=[];
+  orders.filter(o=>o.lat&&o.lng).forEach(o=>{
+    const ic = L.divIcon({className:'',html:`<div style="background:#10F58C;width:14px;height:14px;border-radius:50%;border:2px solid #fff"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+    dmapMarkers.push(L.marker([o.lat,o.lng],{icon:ic}).addTo(dmap).bindPopup(`<b>${o.customer}</b>`));
+  });
+  active.forEach(o=>{
+    const ic = L.divIcon({className:'',html:`<div style="background:#2563EB;width:36px;height:36px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font-size:16px">🛵</div>`,iconSize:[36,36],iconAnchor:[18,18]});
+    dmapMarkers.push(L.marker([o.driver_lat,o.driver_lng],{icon:ic}).addTo(dmap).bindPopup(`<b>مندوب</b><br>${o.customer}`));
+  });
+}
+
+function refreshDriverMap(){
+  const isLeaflet = dmap && dmap._isLeaflet;
+  loadDriversOnMap(isLeaflet);
+  toast('تم التحديث ✓');
 }
 
 // ===== رسم نظام العمل المرن =====

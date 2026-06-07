@@ -40,6 +40,7 @@ body{
 .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:calc(16px + var(--safe-t)) 16px 92px;display:none;animation:fade .35s ease}
 .screen.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.85}}
 ::-webkit-scrollbar{width:0}
 
 /* ===== Header ===== */
@@ -380,6 +381,13 @@ body{
         <span style="font-size:20px">←</span>
       </div>
     </div>
+
+    <div class="card" style="background:linear-gradient(120deg,#10F58C,#0BC36F);color:#04321f;border:none;cursor:pointer;margin-bottom:14px" onclick="go('drivermap')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><b style="font-size:16px">🗺️ خريطة المندوبين الحية</b><div style="font-size:13px;opacity:.75;margin-top:4px">تتبّع جميع مندوبيك في الوقت الحقيقي</div></div>
+        <span style="font-size:20px">←</span>
+      </div>
+    </div>
     <div class="section-title">إعدادات المحافظ</div>
     <div class="card">
       <div class="field"><label>رقم زين كاش</label><input id="aZain" value="07901234567"></div>
@@ -401,6 +409,24 @@ body{
         <div class="stat" style="box-shadow:none;border:none;padding:8px"><div class="v">142</div><div class="k">مشترك نشط</div></div>
         <div class="stat" style="box-shadow:none;border:none;padding:8px"><div class="v">2.1M</div><div class="k">إيراد شهري (د.ع)</div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- DRIVER MAP — لوحة تتبع المندوبين الحية -->
+  <div class="screen map-screen" id="s-drivermap">
+    <div class="map-overlay">
+      <button class="iconbtn" onclick="go('admin')">→</button>
+      <div style="flex:1"></div>
+      <button class="iconbtn" onclick="refreshDriverMap()" title="تحديث">🔄</button>
+    </div>
+    <div id="dmap"></div>
+    <div class="map-card" id="dmapCard">
+      <div style="display:flex;gap:12px;margin-bottom:12px">
+        <div class="stat" style="flex:1;padding:10px;box-shadow:none"><div class="v" id="dmActive" style="font-size:20px">0</div><div class="k">مندوب نشط</div></div>
+        <div class="stat" style="flex:1;padding:10px;box-shadow:none"><div class="v" id="dmOrders" style="font-size:20px">0</div><div class="k">طلب جاري</div></div>
+        <div class="stat" style="flex:1;padding:10px;box-shadow:none"><div class="v" id="dmCash" style="font-size:20px">0</div><div class="k">كاش بالميدان</div></div>
+      </div>
+      <div id="dmDriverList" style="max-height:120px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -499,8 +525,10 @@ body{
 
 <div class="toast" id="toast"></div>
 
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
