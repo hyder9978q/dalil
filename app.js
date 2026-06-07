@@ -171,49 +171,16 @@ function go(screen){
   if(screen==='drivermap') initDriverMap();
 }
 
+// خريطة ESRI — شكل جوجل مابس، مجانية بدون مفتاح
 async function initDriverMap(){
-  initDriverMapLeaflet();
-}
-
-function saveMapboxToken(){
-  const t = document.getElementById('mbToken').value.trim();
-  if(!t.startsWith('pk.')){ toast('الرمز يجب أن يبدأ بـ pk.'); return; }
-  localStorage.setItem('mapbox_token', t);
-  initDriverMap();
-}
-
-// خريطة Mapbox — ثيم Velocity Blue مخصص
-function initDriverMapbox(token){
-  if(typeof mapboxgl === 'undefined'){ initDriverMapLeaflet(); return; }
-  mapboxgl.accessToken = token;
-  if(dmap){ dmap.remove(); dmap=null; }
-  dmap = new mapboxgl.Map({
-    container:'dmap', style:'mapbox://styles/mapbox/dark-v11',
-    center:[BAGHDAD[1],BAGHDAD[0]], zoom:11,
-    attributionControl:false
-  });
-  dmap.on('load',()=>{
-    // تلوين مخصص يتناسب مع ثيم Velocity Blue
-    dmap.setPaintProperty('background','background-color','#060C1C');
-    dmap.setPaintProperty('water','fill-color','#0B1F4D');
-    try{
-      dmap.setPaintProperty('road-street','line-color','#1E3A8A');
-      dmap.setPaintProperty('road-secondary-tertiary','line-color','#1E3A8A');
-      dmap.setPaintProperty('road-primary','line-color','#2563EB');
-      dmap.setPaintProperty('road-motorway-trunk','line-color','#3B82F6');
-    }catch(e){}
-    loadDriversOnMap(false);
-  });
-  clearInterval(dmapTimer);
-  dmapTimer = setInterval(()=>loadDriversOnMap(false), 15000);
-}
-
-// خريطة Leaflet احتياطية إذا لم يكن Mapbox
-async function initDriverMapLeaflet(){
   if(dmap && dmap._isLeaflet){ dmap.invalidateSize(); loadDriversOnMap(true); return; }
   await new Promise(r=>setTimeout(r,100));
+  const dark = document.body.dataset.theme==='dark';
+  const tiles = dark
+    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
   const m = L.map('dmap',{zoomControl:false,attributionControl:false}).setView(BAGHDAD,11);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(m);
+  L.tileLayer(tiles,{maxZoom:19}).addTo(m);
   dmap = m; dmap._isLeaflet = true;
   setTimeout(()=>{ dmap.invalidateSize(); loadDriversOnMap(true); }, 200);
   clearInterval(dmapTimer);
