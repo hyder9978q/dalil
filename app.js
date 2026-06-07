@@ -223,12 +223,13 @@ function initDriverMapbox(token){
 }
 
 // خريطة Leaflet احتياطية إذا لم يكن Mapbox
-function initDriverMapLeaflet(){
-  if(dmap && dmap._leaflet_id) return;
+async function initDriverMapLeaflet(){
+  if(dmap && dmap._isLeaflet){ dmap.invalidateSize(); loadDriversOnMap(true); return; }
+  await new Promise(r=>setTimeout(r,100));
   const m = L.map('dmap',{zoomControl:false,attributionControl:false}).setView(BAGHDAD,11);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(m);
   dmap = m; dmap._isLeaflet = true;
-  loadDriversOnMap(true);
+  setTimeout(()=>{ dmap.invalidateSize(); loadDriversOnMap(true); }, 200);
   clearInterval(dmapTimer);
   dmapTimer = setInterval(()=>loadDriversOnMap(true), 15000);
 }
