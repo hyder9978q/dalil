@@ -41,6 +41,11 @@ body{
 .screen.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.85}}
+/* شرائح اختيار ثيم الخريطة */
+.theme-chips{position:absolute;top:calc(70px + var(--safe-t));left:14px;right:14px;z-index:600;display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.theme-chips::-webkit-scrollbar{height:0}
+.chip{flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:8px 14px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;box-shadow:var(--shadow);white-space:nowrap;display:flex;align-items:center;gap:5px}
+.chip.on{background:var(--blue-bright);color:#fff;border-color:var(--blue-bright)}
 ::-webkit-scrollbar{width:0}
 
 /* ===== Header ===== */
@@ -420,6 +425,7 @@ body{
       <button class="iconbtn" onclick="refreshDriverMap()" title="تحديث">🔄</button>
     </div>
     <div id="dmap" style="position:absolute;inset:0;bottom:0"></div>
+    <div id="themeChips" class="theme-chips"></div>
     <div class="map-card" id="dmapCard">
       <div style="display:flex;gap:10px;margin-bottom:10px">
         <div class="stat" style="flex:1;padding:10px;box-shadow:none"><div class="v" id="dmActive" style="font-size:20px">0</div><div class="k">مندوب نشط</div></div>

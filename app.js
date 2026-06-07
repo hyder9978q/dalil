@@ -20,6 +20,32 @@ const DEMO = [
 let ORDERS = [];
 const BAGHDAD = [33.3152, 44.3661];
 
+// ===== أنماط الخرائط (5 خيارات مجانية بلا مفتاح) =====
+const MAP_STYLES = {
+  dark:      {name:'داكن (Velocity)', emoji:'🌃', url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', sub:'abcd', max:20},
+  voyager:   {name:'ملوّن (جوجل)',    emoji:'🗺️', url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', sub:'abcd', max:20},
+  light:     {name:'فاتح نظيف',        emoji:'☀️', url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', sub:'abcd', max:20},
+  streets:   {name:'شوارع',            emoji:'🛣️', url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', sub:'', max:19},
+  satellite: {name:'قمر صناعي',        emoji:'🛰️', url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', sub:'', max:19},
+};
+function getMapStyle(){ return localStorage.getItem('map_style') || 'dark'; }
+function setMapStyle(key){
+  localStorage.setItem('map_style', key);
+  // أعد رسم كل الخرائط المفتوحة
+  [['map', map], ['dmap', dmap]].forEach(([id, mp])=>{
+    if(mp && mp._dalilTile){ mp.removeLayer(mp._dalilTile); mp._dalilTile = addTiles(mp); }
+  });
+  renderMapStyles();
+  toast('تم تغيير نمط الخريطة ✓');
+}
+function addTiles(leafletMap){
+  const s = MAP_STYLES[getMapStyle()];
+  const layer = L.tileLayer(s.url, {maxZoom:s.max, subdomains:s.sub||'abc'});
+  layer.addTo(leafletMap);
+  leafletMap._dalilTile = layer;
+  return layer;
+}
+
 // ===== نظام الإعدادات المرن (قابل للتعديل حسب الرغبة) =====
 const GOVS = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','بابل','ذي قار','الأنبار','ديالى','كركوك','صلاح الدين','واسط','ميسان','المثنى','القادسية','دهوك','السليمانية'];
 
@@ -153,8 +179,34 @@ async function subscribe(plan, price, days){
   toast(`تم تفعيل الباقة ال${plan} ✓`);
 }
 
-// ===== خريطة المندوبين الحية (Mapbox) =====
+// ===== خريطة المندوبين الحية (MapLibre) =====
 let dmap = null, dmapMarkers = [], dmapTimer = null;
+
+// ثيمات الخريطة الخمسة (كلها مجانية بلا مفتاح)
+const MAP_THEMES = {
+  blue:      {label:'دليل الأزرق', icon:'🔵', style:'https://tiles.openfreemap.org/styles/dark', velocity:true},
+  day:       {label:'نهاري',       icon:'☀️', style:'https://tiles.openfreemap.org/styles/liberty'},
+  satellite: {label:'قمر صناعي',   icon:'🛰️', raster:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'},
+  minimal:   {label:'رمادي بسيط',  icon:'⬜', style:'https://tiles.openfreemap.org/styles/positron'},
+  night:     {label:'ليلي ملاحة',  icon:'🌙', style:'https://tiles.openfreemap.org/styles/fiord'},
+};
+function getMapTheme(){ return localStorage.getItem('mapTheme') || 'blue'; }
+function setMapTheme(key){
+  localStorage.setItem('mapTheme', key);
+  if(dmap){ try{dmap.remove()}catch(e){}; dmap=null; }
+  renderThemeChips();
+  initDriverMap();
+  toast('تم تغيير شكل الخريطة ✓');
+}
+function renderThemeChips(){
+  const cur = getMapTheme();
+  const el = document.getElementById('themeChips');
+  if(!el) return;
+  el.innerHTML = Object.keys(MAP_THEMES).map(k=>`
+    <div class="chip ${k===cur?'on':''}" onclick="setMapTheme('${k}')">
+      <span>${MAP_THEMES[k].icon}</span> ${MAP_THEMES[k].label}
+    </div>`).join('');
+}
 
 function go(screen){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -168,24 +220,29 @@ function go(screen){
   if(screen==='settings') renderSettings();
   if(screen==='admin') renderAdmin();
   if(screen==='worksys') renderConfig();
-  if(screen==='drivermap') initDriverMap();
+  if(screen==='drivermap'){ renderThemeChips(); initDriverMap(); }
 }
 
-// خريطة MapLibre + OpenFreeMap — تحكم كامل بالشكل، مجانية بلا حساب
+// خريطة MapLibre — حسب الثيم المختار
 async function initDriverMap(){
   if(dmap && dmap._maplibre){ loadDriversOnMap(false); return; }
   await new Promise(r=>setTimeout(r,150));
-  // نستخدم dark-matter كأساس نظيف ونبني فوقه
+  const theme = MAP_THEMES[getMapTheme()];
+  let style;
+  if(theme.raster){
+    // قمر صناعي — مصدر raster
+    style = {version:8, sources:{sat:{type:'raster',tiles:[theme.raster],tileSize:256}}, layers:[{id:'sat',type:'raster',source:'sat'}]};
+  } else {
+    style = theme.style;
+  }
   dmap = new maplibregl.Map({
-    container:'dmap',
-    style:'https://tiles.openfreemap.org/styles/dark',
-    attributionControl:false,
+    container:'dmap', style, attributionControl:false,
     center:[BAGHDAD[1],BAGHDAD[0]], zoom:11
   });
   dmap._maplibre = true;
   dmap.on('load',()=>{
-    applyVelocityBlue();
-    forceArabicLabels();
+    if(theme.velocity) applyVelocityBlue();
+    if(!theme.raster) forceArabicLabels();
     loadDriversOnMap(false);
   });
   clearInterval(dmapTimer);
@@ -195,7 +252,6 @@ async function initDriverMap(){
 // ===== ثيم Velocity Blue الكامل =====
 function applyVelocityBlue(){
   const p = (layer, prop, val)=>{ try{ dmap.setPaintProperty(layer,prop,val); }catch(e){} };
-  const l = (layer, prop, val)=>{ try{ dmap.setLayoutProperty(layer,prop,val); }catch(e){} };
   // خلفية وأرض
   p('background','background-color','#040D1E');
   p('landuse','fill-color','#060C1C');

@@ -1,4 +1,4 @@
-const CACHE='dalil-v14';
+const CACHE='dalil-v15';
 const TILES='dalil-tiles';
 const ASSETS=['./','./index.html','./app.js','./manifest.json'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting()});
