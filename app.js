@@ -508,23 +508,40 @@ async function loadTrackData(orderId){
     if(o.driver_lat) pts.push([o.driver_lat, o.driver_lng]);
     trackMap.fitBounds(pts.length>1 ? L.latLngBounds(pts).pad(.3) : [[pts[0][0]-.01,pts[0][1]-.01],[pts[0][0]+.01,pts[0][1]+.01]]);
 
-    // بطاقة الحالة
-    const icons  = {pending:'⏳',delivering:'🚛',delivered:'✅',returned:'↩️',postponed:'🔄'};
+    // بطاقة الحالة مع ETA
+    const icons  = {pending:'⏳',delivering:'🛵',delivered:'✅',returned:'↩️',postponed:'🔄'};
     const labels = {pending:'قيد الانتظار',delivering:'المندوب في الطريق إليك',delivered:'تم التسليم ✓',returned:'تم الإرجاع',postponed:'مؤجل'};
     const colors = {pending:'#F59E0B',delivering:'#2563EB',delivered:'#10F58C',returned:'#EF4444',postponed:'#8B5CF6'};
     const c = colors[o.status]||'#2563EB';
+
+    const etaBlock = (o.status==='delivering' && o.driver_lat && o.lat) ? `
+      <div style="text-align:center;padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-soft);letter-spacing:.5px;margin-bottom:4px">⏱️ الوصول المتوقع</div>
+        <div id="tEta" style="font-size:38px;font-weight:800;color:${c}">جاري الحساب...</div>
+        <div id="tDist" style="font-size:12px;color:var(--text-soft);margin-top:4px"></div>
+      </div>` : o.status==='delivered' ? `
+      <div style="text-align:center;padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px">
+        <div style="font-size:38px;font-weight:800;color:#10F58C">تم التسليم ✓</div>
+      </div>` : '';
+
     document.getElementById('tInfo').innerHTML=`
+      ${etaBlock}
       <div style="display:flex;align-items:center;gap:12px">
-        <div style="font-size:32px">${icons[o.status]||'📦'}</div>
+        <div style="font-size:28px">${icons[o.status]||'📦'}</div>
         <div style="flex:1">
-          <div style="font-size:17px;font-weight:800;color:${c}">${labels[o.status]||o.status}</div>
-          <div style="font-size:13px;color:var(--text-soft);margin-top:2px">📍 ${o.gov||''} — ${o.area||''}</div>
+          <div style="font-size:15px;font-weight:800;color:${c}">${labels[o.status]||o.status}</div>
+          <div style="font-size:12px;color:var(--text-soft);margin-top:2px">📍 ${o.gov||''} — ${o.area||''}</div>
         </div>
-        ${o.status==='delivering'?'<div style="font-size:11px;color:var(--text-faint)">يتجدد كل 10 ث</div>':''}
+        ${o.status==='delivering'?'<div style="font-size:10px;color:var(--text-faint)">↻ كل 10 ث</div>':''}
       </div>
-      <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:10px;font-size:12px;color:var(--text-soft);text-align:center">
+      <div style="margin-top:10px;padding:8px 12px;background:var(--surface-2);border-radius:10px;font-size:12px;color:var(--text-soft);text-align:center">
         🛵 يتم التوصيل عبر <b style="color:var(--text)">دليل</b>
       </div>`;
+
+    // حساب وقت الوصول الحقيقي من OSRM
+    if(o.status==='delivering' && o.driver_lat && o.lat){
+      calcETA(o.driver_lat, o.driver_lng, o.lat, o.lng);
+    }
 
     // تحديث تلقائي كل 10 ثوانٍ إذا كان في الطريق
     clearInterval(trackPollTimer);
@@ -533,6 +550,32 @@ async function loadTrackData(orderId){
       trackPollTimer = setInterval(()=>loadTrackData(id), 10000);
     }
   }catch(e){ document.getElementById('tInfo').innerHTML='<div style="text-align:center;color:var(--danger)">تعذّر التحميل</div>'; }
+}
+
+// حساب وقت الوصول عبر OSRM (مجاني - طريق حقيقي)
+async function calcETA(dLat, dLng, toLat, toLng){
+  try{
+    const url = `https://router.project-osrm.org/route/v1/driving/${dLng},${dLat};${toLng},${toLat}?overview=false&steps=false`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if(d.code!=='Ok') throw new Error();
+    const mins = Math.round(d.routes[0].duration/60);
+    const km   = (d.routes[0].distance/1000).toFixed(1);
+    const etaEl = document.getElementById('tEta');
+    const distEl = document.getElementById('tDist');
+    if(!etaEl) return;
+    if(mins < 1)      etaEl.textContent = 'وصل تقريباً 🎯';
+    else if(mins < 60) etaEl.textContent = `~${mins} دقيقة`;
+    else               etaEl.textContent = `~${Math.floor(mins/60)} س ${mins%60} د`;
+    if(distEl) distEl.textContent = `${km} كم متبقية`;
+  }catch(e){
+    // احتياط: حساب الوقت بالمسافة المستقيمة ÷ سرعة بغداد (25 كم/س)
+    const dx = (toLat-dLat)*111, dy = (toLng-dLng)*111*Math.cos(dLat*Math.PI/180);
+    const km = Math.sqrt(dx*dx+dy*dy).toFixed(1);
+    const mins = Math.max(1, Math.round(km/25*60));
+    const etaEl = document.getElementById('tEta');
+    if(etaEl) etaEl.textContent = `~${mins} دقيقة`;
+  }
 }
 
 // نسخ رابط تتبع الطلب
