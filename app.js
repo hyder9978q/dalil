@@ -172,21 +172,7 @@ function go(screen){
 }
 
 async function initDriverMap(){
-  const token = localStorage.getItem('mapbox_token');
-  if(!token){
-    document.getElementById('dmapCard').innerHTML = `
-      <div style="text-align:center;padding:10px">
-        <b>أضف رمز Mapbox للخريطة الاحترافية</b>
-        <div style="font-size:12px;color:var(--text-soft);margin:6px 0">mapbox.com ← سجّل مجاناً ← انسخ Default public token</div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <input id="mbToken" placeholder="pk.eyJ1..." style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
-          <button class="btn btn-green btn-sm" style="width:auto;padding:10px 16px" onclick="saveMapboxToken()">حفظ</button>
-        </div>
-      </div>`;
-    // استخدم خريطة Leaflet العادية كاحتياط
-    initDriverMapLeaflet(); return;
-  }
-  initDriverMapbox(token);
+  initDriverMapLeaflet();
 }
 
 function saveMapboxToken(){
