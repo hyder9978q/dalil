@@ -184,11 +184,11 @@ let dmap = null, dmapMarkers = [], dmapTimer = null;
 
 // ثيمات الخريطة الخمسة (كلها مجانية بلا مفتاح)
 const MAP_THEMES = {
-  blue:      {label:'دليل الأزرق', icon:'🔵', style:'https://tiles.openfreemap.org/styles/dark', velocity:true},
-  day:       {label:'نهاري',       icon:'☀️', style:'https://tiles.openfreemap.org/styles/liberty'},
-  satellite: {label:'قمر صناعي',   icon:'🛰️', raster:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'},
-  minimal:   {label:'رمادي بسيط',  icon:'⬜', style:'https://tiles.openfreemap.org/styles/positron'},
-  night:     {label:'ليلي ملاحة',  icon:'🌙', style:'https://tiles.openfreemap.org/styles/fiord'},
+  blue:      {label:'دليل الأزرق 3D', icon:'🔵', style:'./style.json', custom:true},
+  day:       {label:'نهاري',           icon:'☀️', style:'https://tiles.openfreemap.org/styles/liberty'},
+  satellite: {label:'قمر صناعي',       icon:'🛰️', raster:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'},
+  minimal:   {label:'رمادي بسيط',      icon:'⬜', style:'https://tiles.openfreemap.org/styles/positron'},
+  night:     {label:'ليلي ملاحة',      icon:'🌙', style:'https://tiles.openfreemap.org/styles/dark'},
 };
 function getMapTheme(){ return localStorage.getItem('mapTheme') || 'blue'; }
 function setMapTheme(key){
@@ -237,12 +237,14 @@ async function initDriverMap(){
   }
   dmap = new maplibregl.Map({
     container:'dmap', style, attributionControl:false,
-    center:[BAGHDAD[1],BAGHDAD[0]], zoom:11
+    center:[BAGHDAD[1],BAGHDAD[0]], zoom:11,
+    pitch: theme.custom ? 50 : 0,
+    bearing: theme.custom ? -15 : 0,
+    antialias: true
   });
   dmap._maplibre = true;
   dmap.on('load',()=>{
-    if(theme.velocity) applyVelocityBlue();
-    if(!theme.raster) forceArabicLabels();
+    if(!theme.custom && !theme.raster) forceArabicLabels();
     loadDriversOnMap(false);
   });
   clearInterval(dmapTimer);
