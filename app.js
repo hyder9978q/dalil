@@ -171,20 +171,31 @@ function go(screen){
   if(screen==='drivermap') initDriverMap();
 }
 
-// خريطة ESRI — شكل جوجل مابس، مجانية بدون مفتاح
+// خريطة MapLibre + OpenFreeMap — تحكم كامل بالشكل، مجانية بلا حساب
 async function initDriverMap(){
-  if(dmap && dmap._isLeaflet){ dmap.invalidateSize(); loadDriversOnMap(true); return; }
-  await new Promise(r=>setTimeout(r,100));
+  if(dmap && dmap._maplibre){ loadDriversOnMap(false); return; }
+  await new Promise(r=>setTimeout(r,150));
   const dark = document.body.dataset.theme==='dark';
-  const tiles = dark
-    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
-  const m = L.map('dmap',{zoomControl:false,attributionControl:false}).setView(BAGHDAD,11);
-  L.tileLayer(tiles,{maxZoom:19}).addTo(m);
-  dmap = m; dmap._isLeaflet = true;
-  setTimeout(()=>{ dmap.invalidateSize(); loadDriversOnMap(true); }, 200);
+  const style = dark
+    ? 'https://tiles.openfreemap.org/styles/dark'
+    : 'https://tiles.openfreemap.org/styles/liberty';
+  dmap = new maplibregl.Map({
+    container:'dmap', style, attributionControl:false,
+    center:[BAGHDAD[1],BAGHDAD[0]], zoom:11
+  });
+  dmap._maplibre = true;
+  dmap.on('load',()=>{
+    // ثيم Velocity Blue المخصص
+    try{
+      if(dark){
+        dmap.setPaintProperty('background','background-color','#060C1C');
+        dmap.setPaintProperty('water','fill-color','#0B1F4D');
+      }
+    }catch(e){}
+    loadDriversOnMap(false);
+  });
   clearInterval(dmapTimer);
-  dmapTimer = setInterval(()=>loadDriversOnMap(true), 15000);
+  dmapTimer = setInterval(()=>loadDriversOnMap(false), 15000);
 }
 
 async function loadDriversOnMap(isLeaflet){
@@ -212,47 +223,34 @@ async function loadDriversOnMap(isLeaflet){
 }
 
 function addMapboxDriverMarkers(active, orders){
-  if(!dmap || !dmap.getCanvas) return;
-  // نظّف القديم
+  if(!dmap || !dmap._maplibre) return;
   dmapMarkers.forEach(m=>m.remove()); dmapMarkers=[];
   // مناطق التسليم (أخضر)
   orders.filter(o=>o.lat&&o.lng).forEach(o=>{
     const el = document.createElement('div');
     el.innerHTML = `<div style="background:#10F58C;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(16,245,140,.5)"></div>`;
-    const m = new mapboxgl.Marker({element:el}).setLngLat([o.lng,o.lat])
-      .setPopup(new mapboxgl.Popup().setHTML(`<b>${o.customer}</b><br>${o.area}`)).addTo(dmap);
+    const m = new maplibregl.Marker({element:el}).setLngLat([o.lng,o.lat])
+      .setPopup(new maplibregl.Popup().setHTML(`<b>${o.customer}</b><br>${o.area}`)).addTo(dmap);
     dmapMarkers.push(m);
   });
-  // المندوبون (أزرق متحرك)
-  active.forEach((o,i)=>{
+  // المندوبون (أزرق نابض)
+  active.forEach(o=>{
     const el = document.createElement('div');
     el.innerHTML = `<div style="background:#2563EB;width:36px;height:36px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font-size:16px;box-shadow:0 3px 12px rgba(37,99,235,.7);animation:pulse 2s infinite">🛵</div>`;
-    const m = new mapboxgl.Marker({element:el}).setLngLat([o.driver_lng,o.driver_lat])
-      .setPopup(new mapboxgl.Popup().setHTML(`<b>🛵 توصيل</b><br>${o.customer}<br>💵 ${(o.cod||0).toLocaleString()} د.ع`)).addTo(dmap);
+    const m = new maplibregl.Marker({element:el}).setLngLat([o.driver_lng,o.driver_lat])
+      .setPopup(new maplibregl.Popup().setHTML(`<b>🛵 توصيل</b><br>${o.customer}<br>💵 ${(o.cod||0).toLocaleString()} د.ع`)).addTo(dmap);
     dmapMarkers.push(m);
   });
   // اضبط الحدود
   if(active.length){
-    const pts = active.map(o=>new mapboxgl.LngLat(o.driver_lng,o.driver_lat));
-    dmap.fitBounds(mapboxgl.LngLatBounds.fromLngLat(pts[0]).extend(...pts), {padding:80});
+    const bounds = active.reduce((b,o)=>b.extend([o.driver_lng,o.driver_lat]),
+      new maplibregl.LngLatBounds([active[0].driver_lng,active[0].driver_lat],[active[0].driver_lng,active[0].driver_lat]));
+    dmap.fitBounds(bounds, {padding:80});
   }
 }
 
-function addLeafletDriverMarkers(active, orders){
-  dmapMarkers.forEach(m=>{try{dmap.removeLayer(m)}catch(e){}}); dmapMarkers=[];
-  orders.filter(o=>o.lat&&o.lng).forEach(o=>{
-    const ic = L.divIcon({className:'',html:`<div style="background:#10F58C;width:14px;height:14px;border-radius:50%;border:2px solid #fff"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
-    dmapMarkers.push(L.marker([o.lat,o.lng],{icon:ic}).addTo(dmap).bindPopup(`<b>${o.customer}</b>`));
-  });
-  active.forEach(o=>{
-    const ic = L.divIcon({className:'',html:`<div style="background:#2563EB;width:36px;height:36px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font-size:16px">🛵</div>`,iconSize:[36,36],iconAnchor:[18,18]});
-    dmapMarkers.push(L.marker([o.driver_lat,o.driver_lng],{icon:ic}).addTo(dmap).bindPopup(`<b>مندوب</b><br>${o.customer}`));
-  });
-}
-
 function refreshDriverMap(){
-  const isLeaflet = dmap && dmap._isLeaflet;
-  loadDriversOnMap(isLeaflet);
+  loadDriversOnMap(!dmap?._maplibre);
   toast('تم التحديث ✓');
 }
 
