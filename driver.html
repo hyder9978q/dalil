@@ -39,7 +39,9 @@ button.stopb{background:var(--crit)} button.ghost{background:var(--surface);colo
 label.photoBtn{flex-direction:row;justify-content:center;align-items:center;padding:13px;border-radius:10px;background:#EAF0FA;color:var(--accent);font-size:15px;font-weight:800;cursor:pointer}
 #pPrev{width:100%;max-height:200px;object-fit:cover;border-radius:10px}
 .sigh{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:var(--soft)}
-button.link{background:none;color:var(--accent);padding:4px 8px;font-size:14px}
+button.link{background:none;color:var(--accent);padding:10px 12px;font-size:14px;min-height:40px}
+#net{border-radius:12px;padding:10px 12px;font-size:14px;font-weight:700;background:#FDF3DC;color:#8A5300;line-height:1.6}
+#net[hidden]{display:none}
 #sig{width:100%;height:150px;background:#fff;border:1px dashed #B8C4DC;border-radius:10px;touch-action:none;display:block}
 button:disabled{opacity:.55}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:20px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
@@ -49,6 +51,7 @@ button:disabled{opacity:.55}
 <body>
 <div class="wrap">
   <h1 id="hello">صفحة السائق</h1>
+  <div id="net" role="status" hidden></div>
   <div class="card">
     <label for="name" id="nameWrap">اسمك<input id="name" type="text" autocomplete="name" placeholder="مثال: علي كاظم"></label>
     <div class="state"><span class="dot" id="dot"></span><span id="state">المناوبة متوقفة</span></div>
@@ -76,6 +79,50 @@ async function rpc(fn,body){
   const r=await fetch(CFG.url+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json',apikey:CFG.key,Authorization:'Bearer '+CFG.key},body:JSON.stringify(body)});
   if(!r.ok)throw new Error(r.status);return r.json();
 }
+/* ===== العمل بدون إنترنت: طابور على الهاتف يُرسل تلقائياً ===== */
+const QK='q:'+code+':'+me,SK='stops:'+code+':'+me;
+let offline=false;
+function qLoad(){try{return JSON.parse(localStorage.getItem(QK))||[]}catch(e){return []}}
+function qSave(q){try{localStorage.setItem(QK,JSON.stringify(q));return true}catch(e){return false}}
+function netBar(){
+  const n=qLoad().length,el=$('net');
+  if(!n&&!offline){el.hidden=true;return}
+  el.hidden=false;
+  el.textContent=(offline?'لا يوجد إنترنت. ':'')+(n?n+' تسجيل محفوظ على الهاتف وسيُرسل تلقائياً عند عودة الإنترنت.':'تسجيلاتك تُحفظ على الهاتف حتى يعود الاتصال.');
+}
+/* يرسل فوراً، وعند الانقطاع يحفظ في الطابور. يحافظ على الترتيب: إذا كان في الطابور شيء، ينتظر خلفه */
+async function call(fn,args){
+  const q=qLoad();
+  if(!q.length){
+    try{const r=await rpc(fn,args);offline=false;netBar();return r}
+    catch(e){offline=true}
+  }
+  q.push({fn,args,t:Date.now()});
+  if(!qSave(q))throw new Error('full');
+  netBar();return 'queued';
+}
+let flushing=false;
+async function flushQ(){
+  if(flushing)return;let q=qLoad();if(!q.length){netBar();return}
+  flushing=true;let sent=0;
+  while(q.length){
+    try{await rpc(q[0].fn,q[0].args);offline=false}catch(e){offline=true;break}
+    q.shift();qSave(q);sent++;
+  }
+  flushing=false;netBar();
+  if(sent&&!q.length){toast('أُرسلت كل التسجيلات المحفوظة');loadStops()}
+}
+function applyQueue(list){
+  qLoad().forEach(x=>{const a=x.args;if(a.p_day!==today())return;const o=list.find(y=>y.id===a.p_order);if(!o)return;
+    if(x.fn==='sup_driver_update')Object.assign(o,{status:a.p_status,reason:a.p_reason,delivered:a.p_delivered,cash:a.p_cash});
+    else if(x.fn==='sup_driver_load')o.loaded=true;
+    else if(x.fn==='sup_proof_put')o.pod=true;});
+  return list;
+}
+window.addEventListener('online',flushQ);
+window.addEventListener('offline',()=>{offline=true;netBar()});
+setInterval(flushQ,20000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 /* ===== GPS ===== */
 const nm=()=>myName||$('name').value.trim();
 async function send(active){
@@ -129,13 +176,19 @@ function draw(){
 }
 async function loadStops(){
   if(!me||!code)return;
-  try{
-    const d=await rpc('sup_driver_day',{p_code:code,p_driver:me,p_day:today()});
+  let d=null;
+  try{d=await rpc('sup_driver_day',{p_code:code,p_driver:me,p_day:today()});offline=false;
     if(!d){$('stops').innerHTML='<div class="card"><div class="muted">هذا الرابط غير معروف. اطلب رابطك من المشرف.</div></div>';return}
-    myName=d.name||'';orders=d.orders||[];requirePod=!!d.requirePod;
-    $('hello').textContent='أهلاً '+myName;$('nameWrap').style.display='none';
-    if(!$('bg').classList.contains('show'))draw();
-  }catch(e){if(!orders.length)$('stops').innerHTML='<div class="card"><div class="muted">لا يوجد إنترنت. سأعيد المحاولة.</div></div>'}
+    try{localStorage.setItem(SK,JSON.stringify({day:today(),d}))}catch(e){}
+  }catch(e){
+    offline=true;
+    if(!orders.length){try{const c=JSON.parse(localStorage.getItem(SK));if(c&&c.day===today())d=c.d}catch(err){}}
+    if(!d){netBar();if(!orders.length)$('stops').innerHTML='<div class="card"><div class="muted">لا يوجد إنترنت ولم تُحفظ محطات اليوم على هذا الهاتف بعد. سأعيد المحاولة.</div></div>';return}
+  }
+  myName=d.name||'';orders=applyQueue(d.orders||[]);requirePod=!!d.requirePod;
+  $('hello').textContent='أهلاً '+myName;$('nameWrap').style.display='none';
+  netBar();
+  if(!$('bg').classList.contains('show'))draw();
 }
 function openStop(oid){
   const o=orders.find(x=>x.id===oid);if(!o)return;cur=o;
@@ -187,9 +240,9 @@ function startLoadScan(){
       const o=orders.find(x=>x.id===p.id);if(!o)return {ok:false,text:'هذا الطلب ليس من حمولتك. لا تحمّله.'};
       if(o.status==='post')return {ok:false,text:o.cust+': مؤجل، لا يُحمَّل اليوم'};
       if(o.loaded)return {ok:true,text:o.cust+': محمّل مسبقاً'};
-      const ok=await rpc('sup_driver_load',{p_code:code,p_driver:me,p_day:today(),p_order:o.id});
+      let ok;try{ok=await call('sup_driver_load',{p_code:code,p_driver:me,p_day:today(),p_order:o.id})}catch(e){return {ok:false,text:'ذاكرة الهاتف ممتلئة. حاول عند عودة الإنترنت.'}}
       if(!ok)return {ok:false,text:'لم يُقبل. قد يكون الطلب نُقل لسائق آخر.'};
-      o.loaded=true;const n=act().filter(x=>x.loaded).length,N=act().length;
+      o.loaded=true;const n=act().filter(x=>x.loaded).length,N=act().length;if(ok==='queued')return {ok:true,text:'حُفظ على الهاتف: '+o.cust+' ('+n+' من '+N+')'};
       return {ok:true,text:'تم: '+o.cust+' ('+n+' من '+N+')'+(n===N?'. اكتمل التحميل':'')};
     },
     onClose:()=>draw()
@@ -205,24 +258,28 @@ async function submit(status){
   }
   const reason=status==='ret'?$('fR').value:(status==='done'&&dl<all)?(rTouched?$('fR').value:'إرجاع جزئي'):'';
   const btns=[...$('sheet').querySelectorAll('button')];btns.forEach(x=>x.disabled=true);
+  let queued=false;
   try{
     if(status==='done'&&(podPhoto||sigDrawn)){
-      toast('جارٍ رفع الإثبات…');
+      if(!offline)toast('جارٍ رفع الإثبات…');
       const pos=await here();
-      const okp=await rpc('sup_proof_put',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_photo:podPhoto,p_sig:sigData(),p_lat:pos?pos.latitude:null,p_lng:pos?pos.longitude:null});
-      if(!okp){toast('لم يُحفظ الإثبات. حاول مرة ثانية.');btns.forEach(x=>x.disabled=false);return}
+      const okp=await call('sup_proof_put',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_photo:podPhoto,p_sig:sigData(),p_lat:pos?pos.latitude:null,p_lng:pos?pos.longitude:null});
+      if(okp===false){toast('لم يُحفظ الإثبات. حاول مرة ثانية.');btns.forEach(x=>x.disabled=false);return}
+      if(okp==='queued')queued=true;
       o.pod=true;
     }
-    const ok=await rpc('sup_driver_update',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_status:status,p_reason:reason,p_delivered:dl,p_cash:cash});
-    if(!ok){toast('لم يُقبل التحديث. قد يكون الطلب نُقل لسائق آخر.');close();loadStops();return}
-    Object.assign(o,{status,reason,delivered:dl,cash});close();toast('تم التسجيل');
-  }catch(e){toast('لا يوجد إنترنت. حاول مرة ثانية.');btns.forEach(x=>x.disabled=false)}
+    const ok=await call('sup_driver_update',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_status:status,p_reason:reason,p_delivered:dl,p_cash:cash});
+    if(ok===false){toast('لم يُقبل التحديث. قد يكون الطلب نُقل لسائق آخر.');close();loadStops();return}
+    if(ok==='queued')queued=true;
+    Object.assign(o,{status,reason,delivered:dl,cash});close();
+    toast(queued?'حُفظ على الهاتف، وسيُرسل تلقائياً عند عودة الإنترنت':'تم التسجيل');
+  }catch(e){toast('ذاكرة الهاتف ممتلئة. حاول مرة ثانية عند عودة الإنترنت.');btns.forEach(x=>x.disabled=false)}
 }
 function close(){$('bg').classList.remove('show');draw()}
 $('stops').addEventListener('click',e=>{if(e.target.closest('#loadBtn')){startLoadScan();return}const b=e.target.closest('.stop');if(b)openStop(b.dataset.id)});
 $('sheet').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;if(b.dataset.s==='')close();else submit(b.dataset.s)});
 $('bg').addEventListener('click',e=>{if(e.target.id==='bg')close()});
-loadStops();setInterval(loadStops,30000);
+netBar();loadStops();setInterval(loadStops,30000);flushQ();
 </script>
 </body>
 </html>
