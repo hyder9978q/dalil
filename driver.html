@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0B1F4D">
+<title>دليل — صفحة السائق</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0B1F4D;--soft:#5B6B8C;--bg:#F4F6FB;--surface:#fff;--line:#DCE4F2;--accent:#2563EB;--ok:#0E9F6E;--warn:#C27803;--crit:#D92D20;--ok-bg:#E3F6EE;--warn-bg:#FDF3DC;--crit-bg:#FDE8E6}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Tajawal',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;display:flex;justify-content:center}
+.wrap{width:100%;max-width:480px;padding:18px 16px 40px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:20px;font-weight:800}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+label{font-size:13px;font-weight:700;color:var(--soft);display:flex;flex-direction:column;gap:5px}
+input,select{font:inherit;font-size:17px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);width:100%}
+button{font:inherit;font-weight:800;font-size:16px;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
+button.stopb{background:var(--crit)} button.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line)} button.red{background:var(--crit)} button.amber{background:var(--warn)}
+.state{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--soft);flex-shrink:0}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.crit{background:var(--crit)}
+.muted{color:var(--soft);font-size:13px;line-height:1.7}
+.sum{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sum div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.sum b{display:block;font-size:19px;font-variant-numeric:tabular-nums}.sum span{font-size:12px;color:var(--soft)}
+.stop{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;width:100%;text-align:start;color:var(--ink);font-weight:500;font-size:15px}
+.stop .g{flex:1;min-width:0}.stop small{display:block;color:var(--soft);font-size:13px}
+.seq{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:grid;place-items:center;font-weight:800;font-size:14px;flex-shrink:0}
+.stop.done .seq{background:var(--ok);color:#fff}.stop.ret .seq{background:var(--crit);color:#fff}.stop.post .seq{background:var(--warn);color:#fff}
+.pill{font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.crit{background:var(--crit-bg);color:var(--crit)}
+.bg{position:fixed;inset:0;background:rgba(5,10,30,.55);display:none;align-items:flex-end;justify-content:center;z-index:5}
+.bg.show{display:flex}
+.sheet{background:var(--surface);width:100%;max-width:480px;max-height:94%;overflow-y:auto;border-radius:20px 20px 0 0;padding:18px 16px 24px;display:flex;flex-direction:column;gap:11px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:20px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="hello">صفحة السائق</h1>
+  <div class="card">
+    <label for="name" id="nameWrap">اسمك<input id="name" type="text" autocomplete="name" placeholder="مثال: علي كاظم"></label>
+    <div class="state"><span class="dot" id="dot"></span><span id="state">المناوبة متوقفة</span></div>
+    <button id="btn">بدء المناوبة</button>
+    <div class="muted" id="gpsInfo">أبقِ الصفحة مفتوحة والهاتف على الشاحن. موقعك يُرسل للمشرف خلال المناوبة فقط.</div>
+  </div>
+  <div id="stops"></div>
+</div>
+<div class="bg" id="bg"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div id="toast" role="status"></div>
+<script src="config.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const parts=location.hash.slice(1).split('.'),code=parts[0]||'',me=parts[1]||'';
+const today=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
+const REASONS=['المحل مغلق','رفض الاستلام','نقص في البضاعة','خطأ في الطلب','لا يوجد نقد','أخرى'];
+let rTouched=false,id=me,watch=null,lock=null,on=false,lastSent=0,lastPos=null,tick=null,orders=[],myName='',cur=null;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2200)}
+try{if(!id){id=localStorage.getItem('drvId');if(!id){id=Math.random().toString(36).slice(2,12);localStorage.setItem('drvId',id)}}$('name').value=localStorage.getItem('drvName')||''}catch(e){id=id||Math.random().toString(36).slice(2,12)}
+function setState(t,c){$('state').textContent=t;$('dot').className='dot '+(c||'')}
+if(!code)setState('الرابط ناقص. اطلب الرابط من المشرف.','crit');
+async function rpc(fn,body){
+  const r=await fetch(CFG.url+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json',apikey:CFG.key,Authorization:'Bearer '+CFG.key},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(r.status);return r.json();
+}
+/* ===== GPS ===== */
+const nm=()=>myName||$('name').value.trim();
+async function send(active){
+  if(!lastPos)return;const c=lastPos.coords;
+  try{
+    const ok=await rpc('sup_push',{p_code:code,p_driver:id,p_name:nm(),p_lat:c.latitude,p_lng:c.longitude,p_acc:c.accuracy||0,p_speed:c.speed||0,p_active:active});
+    if(ok===false){setState('الرابط غير صالح. اطلب رابطاً جديداً.','crit');return}
+    lastSent=Date.now();
+    if(active)setState('المناوبة تعمل · دقة '+Math.round(c.accuracy)+' م','ok');
+  }catch(e){if(active)setState('لا يوجد إنترنت، سأعيد المحاولة','warn')}
+}
+function onPos(p){lastPos=p;if(Date.now()-lastSent>=10000)send(true)}
+function onErr(e){
+  if(e.code===1){setState('الموقع مرفوض. اسمح بالموقع من إعدادات المتصفح ثم أعد المحاولة.','crit');stop(false)}
+  else setState('إشارة GPS ضعيفة، اخرج لمكان مفتوح','warn');
+}
+async function wake(){try{if('wakeLock' in navigator)lock=await navigator.wakeLock.request('screen')}catch(e){}}
+function start(){
+  if(!nm()){setState('اكتب اسمك أولاً','crit');return}
+  if(!code)return;
+  if(!navigator.geolocation){setState('هذا الهاتف لا يدعم تحديد الموقع','crit');return}
+  try{localStorage.setItem('drvName',nm())}catch(e){}
+  on=true;$('btn').textContent='إنهاء المناوبة';$('btn').className='stopb';$('name').disabled=true;
+  setState('جارٍ تحديد الموقع…','warn');
+  watch=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:5000,timeout:30000});
+  wake();
+  tick=setInterval(()=>{if(on&&lastPos&&Date.now()-lastSent>=30000)send(true)},5000);
+}
+function stop(notify){
+  on=false;if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;clearInterval(tick);
+  if(lock){lock.release().catch(()=>{});lock=null}
+  $('btn').textContent='بدء المناوبة';$('btn').className='';$('name').disabled=false;
+  if(notify!==false){send(false);setState('المناوبة متوقفة','')}
+}
+$('btn').onclick=()=>on?stop():start();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){if(on){wake();if(lastPos)send(true)}loadStops()}});
+/* ===== المحطات ===== */
+const dlv=o=>o.status==='done'?(o.delivered!=null?+o.delivered:(+o.cartons||0)):0;
+const cashOf=o=>o.status==='done'?(+o.cash||0):0;
+function draw(){
+  if(!me){$('stops').innerHTML='';return}
+  const act=orders.filter(o=>o.status!=='post'),done=orders.filter(o=>o.status==='done'||o.status==='ret').length,cash=orders.reduce((s,o)=>s+cashOf(o),0);
+  let h='<div class="sum"><div><b>'+done+' / '+act.length+'</b><span>محطات منجزة</span></div><div><b>'+cash.toLocaleString('en')+'</b><span>نقد معك (د.ع)</span></div></div>';
+  if(!orders.length)h+='<div class="card"><div class="muted" style="text-align:center">لا توجد محطات لك اليوم حتى الآن.</div></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">'+orders.map((o,i)=>{
+    const part=o.status==='done'&&dlv(o)<(+o.cartons||0);
+    const st=part?['warn','جزئي '+dlv(o)+'/'+o.cartons]:{done:['ok','مسلّم'],ret:['crit','راجع'],post:['warn','مؤجل']}[o.status];
+    return '<button class="stop '+o.status+'" data-id="'+esc(o.id)+'"><span class="seq">'+(i+1)+'</span><span class="g"><b>'+esc(o.cust)+'</b>'+(o.prio?' <span class="pill warn">مستعجل</span>':'')+'<small>'+esc(o.area)+' · '+(o.cartons||0)+' كرتون'+(o.value?' · '+(+o.value).toLocaleString('en')+' د.ع':'')+(o.note?'<br>'+esc(o.note):'')+'</small></span>'+(st?'<span class="pill '+st[0]+'">'+st[1]+'</span>':'')+'</button>'}).join('')+'</div>';
+  $('stops').innerHTML=h;
+}
+async function loadStops(){
+  if(!me||!code)return;
+  try{
+    const d=await rpc('sup_driver_day',{p_code:code,p_driver:me,p_day:today()});
+    if(!d){$('stops').innerHTML='<div class="card"><div class="muted">هذا الرابط غير معروف. اطلب رابطك من المشرف.</div></div>';return}
+    myName=d.name||'';orders=d.orders||[];
+    $('hello').textContent='أهلاً '+myName;$('nameWrap').style.display='none';
+    if(!$('bg').classList.contains('show'))draw();
+  }catch(e){if(!orders.length)$('stops').innerHTML='<div class="card"><div class="muted">لا يوجد إنترنت. سأعيد المحاولة.</div></div>'}
+}
+function openStop(oid){
+  const o=orders.find(x=>x.id===oid);if(!o)return;cur=o;
+  $('sheet').innerHTML='<h1>'+esc(o.cust)+'</h1><div class="muted">'+esc(o.area)+' · '+(o.cartons||0)+' كرتون · '+(+o.value||0).toLocaleString('en')+' د.ع'+(o.note?'<br>'+esc(o.note):'')+'</div>'+
+  '<div class="g2"><label for="fD">المسلَّم (كرتون)<input id="fD" type="number" inputmode="numeric" value="'+(o.delivered!=null?o.delivered:(o.cartons||0))+'"></label><label for="fC">النقد المستلَم (د.ع)<input id="fC" type="number" inputmode="numeric" value="'+(o.cash!=null?o.cash:(o.value||0))+'"></label></div>'+
+  '<div class="muted">إذا رجع جزء من البضاعة: اكتب عدد الكراتين المسلَّمة فقط. إذا البيع آجل: اكتب النقد 0.</div>'+
+  '<button data-s="done">تأكيد التسليم</button>'+
+  '<label for="fR">سبب الإرجاع<select id="fR">'+REASONS.map(r=>'<option'+(r===o.reason?' selected':'')+'>'+r+'</option>').join('')+'</select></label>'+
+  '<div class="g2"><button class="red" data-s="ret">راجع كامل</button><button class="amber" data-s="post">مؤجل</button></div>'+
+  (o.status!=='new'?'<button class="ghost" data-s="new">تراجع عن التسجيل</button>':'')+'<button class="ghost" data-s="">إغلاق</button>';
+  const fD=$('fD'),fC=$('fC');let touched=o.cash!=null;
+  fC.oninput=()=>{touched=true};rTouched=false;$('fR').onchange=()=>{rTouched=true};
+  fD.oninput=()=>{if(!touched&&+o.cartons)fC.value=Math.round((+o.value||0)*Math.min(+fD.value||0,+o.cartons)/(+o.cartons))};
+  $('bg').classList.add('show');
+}
+async function submit(status){
+  const o=cur,all=+o.cartons||0;let dl=null,cash=null;
+  if(status==='done'){
+    dl=Math.max(0,Math.min(+$('fD').value||0,all));
+    if(all&&dl===0){toast('إذا لم يُسلَّم شيء اضغط «راجع كامل»');return}
+    cash=Math.max(0,+$('fC').value||0);
+  }
+  const reason=status==='ret'?$('fR').value:(status==='done'&&dl<all)?(rTouched?$('fR').value:'إرجاع جزئي'):'';
+  try{
+    const ok=await rpc('sup_driver_update',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_status:status,p_reason:reason,p_delivered:dl,p_cash:cash});
+    if(!ok){toast('لم يُقبل التحديث. قد يكون الطلب نُقل لسائق آخر.');close();loadStops();return}
+    Object.assign(o,{status,reason,delivered:dl,cash});close();toast('تم التسجيل');
+  }catch(e){toast('لا يوجد إنترنت. حاول مرة ثانية.')}
+}
+function close(){$('bg').classList.remove('show');draw()}
+$('stops').addEventListener('click',e=>{const b=e.target.closest('.stop');if(b)openStop(b.dataset.id)});
+$('sheet').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;if(b.dataset.s==='')close();else submit(b.dataset.s)});
+$('bg').addEventListener('click',e=>{if(e.target.id==='bg')close()});
+loadStops();setInterval(loadStops,30000);
+</script>
+</body>
+</html>

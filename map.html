@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0B1F4D">
+<title>دليل — تتبع السائقين</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--ink:#0B1F4D;--soft:#5B6B8C;--bg:#F4F6FB;--surface:#fff;--line:#DCE4F2;--accent:#2563EB;--ok:#0E9F6E;--warn:#C27803;--off:#93A1BE}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Tajawal',system-ui,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;max-width:900px;margin:0 auto}
+header{padding:12px 16px;display:flex;align-items:center;gap:10px}
+h1{font-size:18px;font-weight:800;flex:1}
+.pill{font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#E3F6EE;color:var(--ok);white-space:nowrap}
+.pill.warn{background:#FDF3DC;color:var(--warn)} .pill.off{background:#EAF0FA;color:var(--soft)}
+#map{height:48%;min-height:260px;border-block:1px solid var(--line)}
+#list{flex:1;overflow-y:auto;padding:12px 16px 20px;display:flex;flex-direction:column;gap:8px}
+.drv{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px;cursor:pointer;width:100%;text-align:start;font:inherit;color:inherit}
+.drv.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.drv .g{flex:1;min-width:0}
+.drv small{color:var(--soft);font-size:13px;display:block}
+.btn{font:inherit;font-weight:700;font-size:14px;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-decoration:none;text-align:center}
+.btn.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}.btns .btn{flex:1}
+.share{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.share code{direction:ltr;text-align:left;font-size:12px;word-break:break-all;color:var(--soft);user-select:all}
+.empty{text-align:center;color:var(--soft);padding:14px;font-size:14px;line-height:1.8}
+.mk{width:34px;height:34px;border-radius:50%;border:3px solid #fff;color:#fff;font:800 13px 'Tajawal',sans-serif;display:grid;place-items:center;box-shadow:0 2px 8px rgba(11,31,77,.4)}
+</style>
+</head>
+<body>
+<header><a class="btn" href="./">اللوحة</a><h1 id="ttl">تتبع السائقين</h1><span class="pill off" id="sync">جارٍ الاتصال…</span></header>
+<div id="map"></div>
+<div id="list"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="config.js"></script>
+<script>
+const code=location.hash.slice(1),$=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const map=L.map('map',{zoomControl:true}).setView([33.3,44.4],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const marks={};let rows=[],sel=null,trail=null,fitted=false,driveCode='';
+async function rpc(fn,body){
+  const r=await fetch(CFG.url+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json',apikey:CFG.key,Authorization:'Bearer '+CFG.key},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(r.status);return r.json();
+}
+const age=r=>(Date.now()-new Date(r.updated_at).getTime())/1000;
+const st=r=>!r.active?['off','أنهى المناوبة','#93A1BE']:age(r)<90?['','متصل','#0E9F6E']:age(r)<600?['warn','متأخر','#C27803']:['off','منقطع','#93A1BE'];
+const ago=s=>s<60?'قبل '+Math.round(s)+' ث':s<3600?'قبل '+Math.round(s/60)+' د':'قبل '+Math.round(s/3600)+' س';
+function draw(){
+  const seen={};
+  rows.forEach(r=>{
+    seen[r.driver_id]=1;const s=st(r),ini=esc((r.name||'؟').trim().slice(0,2));
+    const icon=L.divIcon({className:'',html:'<div class="mk" style="background:'+s[2]+'">'+ini+'</div>',iconSize:[34,34],iconAnchor:[17,17]});
+    if(marks[r.driver_id])marks[r.driver_id].setLatLng([r.lat,r.lng]).setIcon(icon);
+    else marks[r.driver_id]=L.marker([r.lat,r.lng],{icon}).addTo(map).on('click',()=>pick(r.driver_id));
+  });
+  Object.keys(marks).forEach(k=>{if(!seen[k]){map.removeLayer(marks[k]);delete marks[k]}});
+  if(!fitted&&rows.length){map.fitBounds(L.latLngBounds(rows.map(r=>[r.lat,r.lng])).pad(.3),{maxZoom:15});fitted=true}
+  const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'driver.html#'+driveCode;
+  const msg='رابط مناوبة السائق. افتحه عند بداية الدوام واضغط «بدء المناوبة»:\n'+link;
+  let h=rows.length?rows.map(r=>{const s=st(r);return '<button class="drv'+(sel===r.driver_id?' sel':'')+'" data-id="'+esc(r.driver_id)+'"><span class="g"><b>'+esc(r.name||'بلا اسم')+'</b><small>'+ago(age(r))+' · '+Math.round((r.speed||0)*3.6)+' كم/س · دقة '+Math.round(r.acc||0)+' م</small></span><span class="pill '+s[0]+'">'+s[1]+'</span></button>'}).join(''):'<div class="empty">لا يوجد سائق متصل بعد.<br>أرسل الرابط أدناه للسائقين.</div>';
+  h+='<div class="share"><b>رابط عام للتتبع فقط</b><span style="font-size:13px;color:var(--soft)">الرابط الشخصي لكل سائق (مع محطاته) يُرسل من تبويب التوزيع في اللوحة.</span><code>'+esc(link)+'</code><div class="btns"><button class="btn pri" id="cp">نسخ الرابط</button><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(msg)+'">إرسال بواتساب</a></div></div>';
+  $('list').innerHTML=h;
+  $('cp').onclick=async()=>{try{await navigator.clipboard.writeText(link);$('cp').textContent='تم النسخ'}catch(e){$('cp').textContent='انسخه يدوياً من الأعلى'}};
+}
+async function pick(id){
+  sel=sel===id?null:id;if(trail){map.removeLayer(trail);trail=null}draw();
+  if(!sel)return;
+  const r=rows.find(x=>x.driver_id===id);if(r)map.setView([r.lat,r.lng],Math.max(map.getZoom(),15));
+  try{const pts=await rpc('sup_trail',{p_code:code,p_driver:id});if(sel===id&&pts&&pts.length>1)trail=L.polyline(pts.map(p=>[p.lat,p.lng]),{color:'#2563EB',weight:4,opacity:.8}).addTo(map)}catch(e){}
+}
+$('list').addEventListener('click',e=>{const b=e.target.closest('.drv');if(b)pick(b.dataset.id)});
+async function refresh(){
+  try{
+    const d=await rpc('sup_list',{p_code:code});
+    if(!d){$('sync').textContent='الرابط غير صالح';$('sync').className='pill warn';$('list').innerHTML='<div class="empty">رمز المشرف غير صحيح. افتح الرابط الكامل الذي استلمته.</div>';return}
+    rows=d.drivers||[];driveCode=d.drive_code;$('ttl').textContent=d.name||'تتبع السائقين';
+    const live=rows.filter(r=>r.active&&age(r)<90).length;
+    $('sync').textContent=live+' متصل من '+rows.length;$('sync').className='pill'+(live?'':' off');
+    draw();
+  }catch(e){$('sync').textContent='لا يوجد اتصال';$('sync').className='pill warn'}
+}
+if(!code){$('sync').textContent='الرابط ناقص';$('list').innerHTML='<div class="empty">افتح الرابط الكامل الذي يحتوي رمز المشرف.</div>'}
+else{refresh();setInterval(refresh,10000)}
+</script>
+</body>
+</html>
