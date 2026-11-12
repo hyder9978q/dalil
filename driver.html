@@ -34,6 +34,14 @@ button.stopb{background:var(--crit)} button.ghost{background:var(--surface);colo
 .bg.show{display:flex}
 .sheet{background:var(--surface);width:100%;max-width:480px;max-height:94%;overflow-y:auto;border-radius:20px 20px 0 0;padding:18px 16px 24px;display:flex;flex-direction:column;gap:11px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pod{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.podh{font-weight:800;font-size:15px}
+label.photoBtn{flex-direction:row;justify-content:center;align-items:center;padding:13px;border-radius:10px;background:#EAF0FA;color:var(--accent);font-size:15px;font-weight:800;cursor:pointer}
+#pPrev{width:100%;max-height:200px;object-fit:cover;border-radius:10px}
+.sigh{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:var(--soft)}
+button.link{background:none;color:var(--accent);padding:4px 8px;font-size:14px}
+#sig{width:100%;height:150px;background:#fff;border:1px dashed #B8C4DC;border-radius:10px;touch-action:none;display:block}
+button:disabled{opacity:.55}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:20px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 #toast.show{opacity:1}
 </style>
@@ -51,6 +59,7 @@ button.stopb{background:var(--crit)} button.ghost{background:var(--surface);colo
 </div>
 <div class="bg" id="bg"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" role="status"></div>
+<script src="scan.js"></script>
 <script src="config.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -58,7 +67,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const parts=location.hash.slice(1).split('.'),code=parts[0]||'',me=parts[1]||'';
 const today=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const REASONS=['المحل مغلق','رفض الاستلام','نقص في البضاعة','خطأ في الطلب','لا يوجد نقد','أخرى'];
-let rTouched=false,id=me,watch=null,lock=null,on=false,lastSent=0,lastPos=null,tick=null,orders=[],myName='',cur=null;
+let requirePod=false,podPhoto=null,sigDrawn=false,rTouched=false,id=me,watch=null,lock=null,on=false,lastSent=0,lastPos=null,tick=null,orders=[],myName='',cur=null;
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2200)}
 try{if(!id){id=localStorage.getItem('drvId');if(!id){id=Math.random().toString(36).slice(2,12);localStorage.setItem('drvId',id)}}$('name').value=localStorage.getItem('drvName')||''}catch(e){id=id||Math.random().toString(36).slice(2,12)}
 function setState(t,c){$('state').textContent=t;$('dot').className='dot '+(c||'')}
@@ -109,12 +118,13 @@ const cashOf=o=>o.status==='done'?(+o.cash||0):0;
 function draw(){
   if(!me){$('stops').innerHTML='';return}
   const act=orders.filter(o=>o.status!=='post'),done=orders.filter(o=>o.status==='done'||o.status==='ret').length,cash=orders.reduce((s,o)=>s+cashOf(o),0);
-  let h='<div class="sum"><div><b>'+done+' / '+act.length+'</b><span>محطات منجزة</span></div><div><b>'+cash.toLocaleString('en')+'</b><span>نقد معك (د.ع)</span></div></div>';
+  let h='<div class="sum"><div><b>'+done+' من '+act.length+'</b><span>محطات منجزة</span></div><div><b>'+cash.toLocaleString('en')+'</b><span>نقد معك (د.ع)</span></div></div>';
   if(!orders.length)h+='<div class="card"><div class="muted" style="text-align:center">لا توجد محطات لك اليوم حتى الآن.</div></div>';
+  if(act.length){const ld=act.filter(o=>o.loaded).length;h+='<button class="'+(ld===act.length?'ghost':'')+'" id="loadBtn" style="margin-top:10px;width:100%">'+(ld===act.length?'اكتمل التحميل ('+ld+' من '+act.length+')':'مسح ملصقات التحميل ('+ld+' من '+act.length+')')+'</button>'}
   h+='<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">'+orders.map((o,i)=>{
     const part=o.status==='done'&&dlv(o)<(+o.cartons||0);
     const st=part?['warn','جزئي '+dlv(o)+'/'+o.cartons]:{done:['ok','مسلّم'],ret:['crit','راجع'],post:['warn','مؤجل']}[o.status];
-    return '<button class="stop '+o.status+'" data-id="'+esc(o.id)+'"><span class="seq">'+(i+1)+'</span><span class="g"><b>'+esc(o.cust)+'</b>'+(o.prio?' <span class="pill warn">مستعجل</span>':'')+'<small>'+esc(o.area)+' · '+(o.cartons||0)+' كرتون'+(o.value?' · '+(+o.value).toLocaleString('en')+' د.ع':'')+(o.note?'<br>'+esc(o.note):'')+'</small></span>'+(st?'<span class="pill '+st[0]+'">'+st[1]+'</span>':'')+'</button>'}).join('')+'</div>';
+    return '<button class="stop '+o.status+'" data-id="'+esc(o.id)+'"><span class="seq">'+(i+1)+'</span><span class="g"><b>'+esc(o.cust)+'</b>'+(o.prio?' <span class="pill warn">مستعجل</span>':'')+'<small>'+esc(o.area)+' · '+(o.cartons||0)+' كرتون'+(o.value?' · '+(+o.value).toLocaleString('en')+' د.ع':'')+(o.loaded?' · محمّل':'')+(o.pod?' · موثّق':'')+(o.note?'<br>'+esc(o.note):'')+'</small></span>'+(st?'<span class="pill '+st[0]+'">'+st[1]+'</span>':'')+'</button>'}).join('')+'</div>';
   $('stops').innerHTML=h;
 }
 async function loadStops(){
@@ -122,7 +132,7 @@ async function loadStops(){
   try{
     const d=await rpc('sup_driver_day',{p_code:code,p_driver:me,p_day:today()});
     if(!d){$('stops').innerHTML='<div class="card"><div class="muted">هذا الرابط غير معروف. اطلب رابطك من المشرف.</div></div>';return}
-    myName=d.name||'';orders=d.orders||[];
+    myName=d.name||'';orders=d.orders||[];requirePod=!!d.requirePod;
     $('hello').textContent='أهلاً '+myName;$('nameWrap').style.display='none';
     if(!$('bg').classList.contains('show'))draw();
   }catch(e){if(!orders.length)$('stops').innerHTML='<div class="card"><div class="muted">لا يوجد إنترنت. سأعيد المحاولة.</div></div>'}
@@ -132,6 +142,9 @@ function openStop(oid){
   $('sheet').innerHTML='<h1>'+esc(o.cust)+'</h1><div class="muted">'+esc(o.area)+' · '+(o.cartons||0)+' كرتون · '+(+o.value||0).toLocaleString('en')+' د.ع'+(o.note?'<br>'+esc(o.note):'')+'</div>'+
   '<div class="g2"><label for="fD">المسلَّم (كرتون)<input id="fD" type="number" inputmode="numeric" value="'+(o.delivered!=null?o.delivered:(o.cartons||0))+'"></label><label for="fC">النقد المستلَم (د.ع)<input id="fC" type="number" inputmode="numeric" value="'+(o.cash!=null?o.cash:(o.value||0))+'"></label></div>'+
   '<div class="muted">إذا رجع جزء من البضاعة: اكتب عدد الكراتين المسلَّمة فقط. إذا البيع آجل: اكتب النقد 0.</div>'+
+  '<div class="pod"><div class="podh">إثبات التسليم'+(requirePod?' (مطلوب صورة)':' (اختياري)')+'</div>'+
+  '<label class="photoBtn" for="fP"><span id="pTxt">'+(o.pod?'يوجد إثبات سابق. التقط صورة جديدة':'التقط صورة البضاعة عند الزبون')+'</span><input id="fP" type="file" accept="image/*" capture="environment" hidden></label><img id="pPrev" alt="معاينة الصورة" hidden>'+
+  '<div class="sigh"><span>توقيع المستلم</span><button type="button" class="link" id="sigClr">مسح التوقيع</button></div><canvas id="sig" aria-label="مساحة توقيع المستلم"></canvas></div>'+
   '<button data-s="done">تأكيد التسليم</button>'+
   '<label for="fR">سبب الإرجاع<select id="fR">'+REASONS.map(r=>'<option'+(r===o.reason?' selected':'')+'>'+r+'</option>').join('')+'</select></label>'+
   '<div class="g2"><button class="red" data-s="ret">راجع كامل</button><button class="amber" data-s="post">مؤجل</button></div>'+
@@ -140,6 +153,47 @@ function openStop(oid){
   fC.oninput=()=>{touched=true};rTouched=false;$('fR').onchange=()=>{rTouched=true};
   fD.oninput=()=>{if(!touched&&+o.cartons)fC.value=Math.round((+o.value||0)*Math.min(+fD.value||0,+o.cartons)/(+o.cartons))};
   $('bg').classList.add('show');
+  podPhoto=null;sigDrawn=false;initSig();
+  $('fP').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('pTxt').textContent='جارٍ تجهيز الصورة…';
+    try{podPhoto=await shrink(f);$('pPrev').src=podPhoto;$('pPrev').hidden=false;$('pTxt').textContent='تغيير الصورة'}catch(err){podPhoto=null;$('pTxt').textContent='تعذّر قراءة الصورة. حاول مرة ثانية'}};
+}
+function shrink(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{const k=Math.min(1,1024/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);let q=.62,d=c.toDataURL('image/jpeg',q);while(d.length>450000&&q>.25){q-=.1;d=c.toDataURL('image/jpeg',q)}res(d)};
+  img.onerror=()=>{URL.revokeObjectURL(url);rej()};img.src=url})}
+function initSig(){
+  const c=$('sig'),r=c.getBoundingClientRect(),k=window.devicePixelRatio||1;c.width=Math.max(1,Math.round(r.width*k));c.height=Math.max(1,Math.round(r.height*k));
+  const x=c.getContext('2d');x.scale(k,k);x.lineWidth=2.4;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#0B1F4D';let down=false;
+  const pt=e=>{const b=c.getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top]};
+  c.onpointerdown=e=>{down=true;try{c.setPointerCapture(e.pointerId)}catch(err){}const [a,b]=pt(e);x.beginPath();x.moveTo(a,b);x.lineTo(a+.1,b+.1);x.stroke();sigDrawn=true;e.preventDefault()};
+  c.onpointermove=e=>{if(!down)return;const [a,b]=pt(e);x.lineTo(a,b);x.stroke();e.preventDefault()};
+  c.onpointerup=c.onpointercancel=()=>{down=false};
+  $('sigClr').onclick=()=>{x.clearRect(0,0,c.width,c.height);sigDrawn=false};
+}
+function sigData(){if(!sigDrawn)return null;const c=$('sig'),w=Math.min(600,c.width),h=Math.round(c.height*w/c.width),o=document.createElement('canvas');o.width=w;o.height=h;
+  const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(c,0,0,w,h);return o.toDataURL('image/png')}
+function here(){
+  if(lastPos&&Date.now()-lastPos.timestamp<120000)return Promise.resolve(lastPos.coords);
+  if(!navigator.geolocation)return Promise.resolve(null);
+  return new Promise(r=>navigator.geolocation.getCurrentPosition(p=>r(p.coords),()=>r(null),{enableHighAccuracy:true,timeout:7000,maximumAge:60000}));
+}
+function startLoadScan(){
+  const act=()=>orders.filter(o=>o.status!=='post');
+  openScanner({
+    status:()=>'تحميل '+myName+': '+act().filter(o=>o.loaded).length+' من '+act().length,
+    onCode:async c=>{
+      const p=parseLabel(c);if(!p)return {ok:false,text:'هذا ليس ملصق طلب'};
+      if(p.day&&p.day!==today())return {ok:false,text:'ملصق يوم آخر ('+p.day+'). أرجعه للمخزن.'};
+      const o=orders.find(x=>x.id===p.id);if(!o)return {ok:false,text:'هذا الطلب ليس من حمولتك. لا تحمّله.'};
+      if(o.status==='post')return {ok:false,text:o.cust+': مؤجل، لا يُحمَّل اليوم'};
+      if(o.loaded)return {ok:true,text:o.cust+': محمّل مسبقاً'};
+      const ok=await rpc('sup_driver_load',{p_code:code,p_driver:me,p_day:today(),p_order:o.id});
+      if(!ok)return {ok:false,text:'لم يُقبل. قد يكون الطلب نُقل لسائق آخر.'};
+      o.loaded=true;const n=act().filter(x=>x.loaded).length,N=act().length;
+      return {ok:true,text:'تم: '+o.cust+' ('+n+' من '+N+')'+(n===N?'. اكتمل التحميل':'')};
+    },
+    onClose:()=>draw()
+  });
 }
 async function submit(status){
   const o=cur,all=+o.cartons||0;let dl=null,cash=null;
@@ -147,16 +201,25 @@ async function submit(status){
     dl=Math.max(0,Math.min(+$('fD').value||0,all));
     if(all&&dl===0){toast('إذا لم يُسلَّم شيء اضغط «راجع كامل»');return}
     cash=Math.max(0,+$('fC').value||0);
+    if(requirePod&&!podPhoto&&!o.pod){toast('التقط صورة التسليم أولاً');return}
   }
   const reason=status==='ret'?$('fR').value:(status==='done'&&dl<all)?(rTouched?$('fR').value:'إرجاع جزئي'):'';
+  const btns=[...$('sheet').querySelectorAll('button')];btns.forEach(x=>x.disabled=true);
   try{
+    if(status==='done'&&(podPhoto||sigDrawn)){
+      toast('جارٍ رفع الإثبات…');
+      const pos=await here();
+      const okp=await rpc('sup_proof_put',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_photo:podPhoto,p_sig:sigData(),p_lat:pos?pos.latitude:null,p_lng:pos?pos.longitude:null});
+      if(!okp){toast('لم يُحفظ الإثبات. حاول مرة ثانية.');btns.forEach(x=>x.disabled=false);return}
+      o.pod=true;
+    }
     const ok=await rpc('sup_driver_update',{p_code:code,p_driver:me,p_day:today(),p_order:o.id,p_status:status,p_reason:reason,p_delivered:dl,p_cash:cash});
     if(!ok){toast('لم يُقبل التحديث. قد يكون الطلب نُقل لسائق آخر.');close();loadStops();return}
     Object.assign(o,{status,reason,delivered:dl,cash});close();toast('تم التسجيل');
-  }catch(e){toast('لا يوجد إنترنت. حاول مرة ثانية.')}
+  }catch(e){toast('لا يوجد إنترنت. حاول مرة ثانية.');btns.forEach(x=>x.disabled=false)}
 }
 function close(){$('bg').classList.remove('show');draw()}
-$('stops').addEventListener('click',e=>{const b=e.target.closest('.stop');if(b)openStop(b.dataset.id)});
+$('stops').addEventListener('click',e=>{if(e.target.closest('#loadBtn')){startLoadScan();return}const b=e.target.closest('.stop');if(b)openStop(b.dataset.id)});
 $('sheet').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;if(b.dataset.s==='')close();else submit(b.dataset.s)});
 $('bg').addEventListener('click',e=>{if(e.target.id==='bg')close()});
 loadStops();setInterval(loadStops,30000);
