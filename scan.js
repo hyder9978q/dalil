@@ -12,7 +12,7 @@
   let lib=null;
   function needLib(){
     if(window.jsQR)return Promise.resolve();
-    if(!lib)lib=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';s.onload=res;s.onerror=()=>{lib=null;rej()};document.head.appendChild(s)});
+    if(!lib)lib=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';s.integrity='sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';s.crossOrigin='anonymous';s.onload=res;s.onerror=()=>{lib=null;rej()};document.head.appendChild(s)});
     return lib;
   }
   async function detector(){

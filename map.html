@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0B1F4D">
 <title>دليل — تتبع السائقين</title>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
 <style>
 :root{--ink:#0B1F4D;--soft:#5B6B8C;--bg:#F4F6FB;--surface:#fff;--line:#DCE4F2;--accent:#2563EB;--ok:#0E9F6E;--warn:#C27803;--off:#93A1BE}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -35,7 +35,7 @@ h1{font-size:18px;font-weight:800;flex:1}
 <header><a class="btn" href="./">اللوحة</a><h1 id="ttl">تتبع السائقين</h1><span class="pill off" id="sync">جارٍ الاتصال…</span></header>
 <div id="map"></div>
 <div id="list"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="config.js"></script>
 <script>
 const code=location.hash.slice(1),$=id=>document.getElementById(id);

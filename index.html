@@ -163,22 +163,30 @@ let curDate=iso(new Date());
 const DAYS={};                       // تاريخ → بيانات اليوم
 const blankDay=()=>({orders:[],att:{},checks:{},sent:{},cashIn:{}});
 let D=blankDay();
-const timers={},busy={},pend={};
+const timers={},busy={},pend={},VER={};let CONFLICT=false;
 function setSync(t){$('#sync').textContent=t}
-async function readDoc(path){return rpc('sup_doc_get',{p_code:KEY,p_path:path})}
+async function readDoc(path){const r=await rpc('sup_doc_get',{p_code:KEY,p_path:path});if(r&&r._v!=null){VER[path]=r._v;delete r._v}return r}
 function persist(path,obj){if(!ready)return;clearTimeout(timers[path]);setSync('يحفظ…');timers[path]=setTimeout(()=>flush(path,obj),500)}
 async function flush(path,obj){
+  if(CONFLICT)return;
   if(busy[path]){pend[path]=obj;return}
-  busy[path]=true;
+  busy[path]=true;let retry=false;
   try{
-    const data=JSON.parse(JSON.stringify(obj));
-    const ok=await rpc('sup_doc_set',{p_code:KEY,p_path:path,p_data:data});if(ok===false)throw new Error('refused');
-    setSync('محفوظ');
-  }catch(e){
-    setSync('تعذّر الحفظ، سأعيد المحاولة');setTimeout(()=>persist(path,obj),5000);
-  }
+    const data=JSON.parse(JSON.stringify(obj));delete data._v;
+    const r=await rpc('sup_doc_set',{p_code:KEY,p_path:path,p_data:data,p_v:VER[path]==null?null:VER[path]});
+    if(r===-1)conflict();
+    else if(r===-3)setSync('لم يُحفظ: بيانات هذا اليوم أكبر من الحد');
+    else if(r===-2)setSync('رمز المشرف لم يعد صالحاً. افتح الرابط الجديد');
+    else if(typeof r==='number'&&r>0){VER[path]=r;setSync('محفوظ')}
+    else retry=true;
+  }catch(e){retry=true}
   busy[path]=false;
-  if(pend[path]){const o=pend[path];delete pend[path];flush(path,o)}
+  if(retry&&!CONFLICT){setSync('تعذّر الحفظ، سأعيد المحاولة');setTimeout(()=>persist(path,obj),5000)}
+  if(pend[path]&&!CONFLICT){const o=pend[path];delete pend[path];flush(path,o)}
+}
+function conflict(){
+  CONFLICT=true;setSync('عُدّل من جهاز آخر');
+  sheet('<h3>البيانات عُدّلت من جهاز آخر</h3><div class="muted">اللوحة مفتوحة على أكثر من جهاز أو تبويب، وحُفظت نسخة أحدث هناك. لم يُحفظ تعديلك الأخير هنا حتى لا يُمحى عمل الجهاز الآخر. حدّث الصفحة ثم أعد التعديل.</div><button class="btn pri" data-act="reload">تحديث الصفحة</button>');
 }
 const saveM=()=>persist('app/master',M);
 const saveD=()=>persist('days/'+curDate,D);
@@ -198,7 +206,7 @@ async function pull(){
 }
 async function loadRange(from,to,fresh){
   const r=await rpc('sup_days_range',{p_code:KEY,p_from:from,p_to:to})||{};
-  Object.keys(r).forEach(k=>{if(k===curDate&&DAYS[k])return;if(!DAYS[k]||fresh)DAYS[k]=normDay(r[k])});
+  Object.keys(r).forEach(k=>{const v=r[k]._v;delete r[k]._v;if(k===curDate&&DAYS[k])return;if(!DAYS[k]||fresh){DAYS[k]=normDay(r[k]);if(v!=null)VER['days/'+k]=v}});
 }
 const labelCode=o=>'D1|'+curDate+'|'+o.id;
 async function init(){
@@ -302,6 +310,7 @@ function alerts(){
     if(r!==null&&r<=14)a.push({c:r<0?1:0,t:'سنوية '+v.plate+(r<0?' منتهية':' تنتهي خلال '+r+' يوم'),go:'vehicles'});
     if(v.oilAt&&v.km&&+v.km>=+v.oilAt-300)a.push({c:+v.km>=+v.oilAt?1:0,t:'تبديل زيت '+v.plate+(+v.km>=+v.oilAt?' مستحق الآن':' بعد '+(v.oilAt-v.km)+' كم'),go:'vehicles'});
   });
+  M.drivers.forEach(d=>{const cr=ordersOf(d.id).filter(o=>o.by==='driver'&&o.status==='done'&&cashOf(o)<due(o)).reduce((t,o)=>t+due(o)-cashOf(o),0);if(cr>0)a.push({c:0,t:d.name+' سجّل بيعاً آجلاً بقيمة '+money(cr)+'. تأكد من الزبائن قبل اعتماده',go:'cash'})});
   M.drivers.forEach(d=>{const c=cashRow(d.id);if(c.diff>0)a.push({c:1,t:'عجز نقدي عند '+d.name+': '+money(c.diff),go:'cash'})});
   M.drivers.forEach(d=>{const os=ordersOf(d.id).filter(o=>o.status!=='post'),ld=os.filter(o=>o.loaded).length,miss=os.filter(o=>!o.loaded&&o.status==='new').length;if(ld&&miss)a.push({c:0,t:d.name+': '+miss+' طلب لم يُمسح عند التحميل',go:'dispatch'})});
   fuelFlags().forEach(f=>a.push({c:0,t:'استهلاك وقود '+f.plate+' مرتفع: '+f.l100+' ل/100كم (المعتاد في الأسطول '+f.avg+')',go:'vehicles'}));
@@ -437,6 +446,7 @@ function vSetup(){
   return '<div class="card"><h2>بيانات الشركة</h2><label for="fCo">اسم الشركة أو القسم<input type="text" id="fCo" value="'+esc(M.company)+'" placeholder="مثال: التواصل العراقية — قسم التوزيع"></label><button class="btn pri" data-act="saveco">حفظ</button></div>'+
   '<div class="card"><h2>الإعدادات</h2><label class="chk" for="sPod"><input type="checkbox" id="sPod" data-act="spod"'+(M.settings.requirePod?' checked':'')+'>إلزام السائق بصورة عند كل تسليم</label><label for="sOil">تبديل الزيت كل (كم)<input type="number" id="sOil" inputmode="numeric" value="'+(M.settings.oilEvery||5000)+'"></label><button class="btn" data-act="soil">حفظ</button></div>'+
   '<div class="card"><h2>طريقة العمل اليومية</h2><div class="muted">1. صباحاً: الصق قائمة طلبات المبيعات.<br>2. اضغط توزيع تلقائي: النظام يوزّع حسب مناطق السائقين وسعة المركبات ويرتّب المحطات.<br>3. افحص المركبات واطبع ملصقات الطلبات. كل سائق يمسح ملصقاته عند التحميل، فلا تخرج بضاعة لمركبة خطأ. ثم أرسل خط السير.<br>4. كل سائق يسجّل تسليماته من رابطه، وتظهر عندك خلال 15 ثانية. تستطيع التعديل يدوياً.<br>5. آخر النهار: سجّل النقد المستلَم في تبويب النقد، ثم أرسل تقرير اليوم.</div></div>'+
+  '<div class="card"><h2>الأمان</h2><div class="muted">إذا ترك سائق العمل أو فُقد هاتف، غيّر الرابط فيتوقف القديم فوراً.</div><div class="btns"><button class="btn" data-act="rot" data-v="drive">تغيير رابط السائقين</button><button class="btn danger" data-act="rot" data-v="view">تغيير رابط المشرف</button></div></div>'+
   '<div class="card"><h2>بيانات تجريبية</h2><div class="muted">تملأ النظام بـ5 سائقين و5 مركبات و24 طلباً لهذا اليوم، مع سجل أسبوعين سابقين وسجل وقود لتظهر التقارير. تستبدل البيانات الحالية.</div><div class="btns"><button class="btn" data-act="demo">تحميل بيانات تجريبية</button><button class="btn danger" data-act="wipe">مسح كل البيانات</button></div></div>'+
   '<div class="muted">السائقون: '+M.drivers.length+' · المركبات: '+M.vehicles.length+' · الزبائن المحفوظون: '+M.customers.length+'</div>';
 }
@@ -521,7 +531,7 @@ async function loadProof(o){
 }
 /* ===== ملصقات ومسح التحميل ===== */
 let qrLib=null;
-function needQR(){if(window.qrcode)return Promise.resolve();if(!qrLib)qrLib=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://unpkg.com/qrcode-generator@1.4.4/qrcode.js';sc.onload=res;sc.onerror=()=>{qrLib=null;rej()};document.head.appendChild(sc)});return qrLib}
+function needQR(){if(window.qrcode)return Promise.resolve();if(!qrLib)qrLib=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://unpkg.com/qrcode-generator@1.4.4/qrcode.js';sc.integrity='sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k';sc.crossOrigin='anonymous';sc.onload=res;sc.onerror=()=>{qrLib=null;rej()};document.head.appendChild(sc)});return qrLib}
 async function printLabels(){
   const used=M.drivers.filter(d=>ordersOf(d.id).some(o=>o.status!=='post'));
   if(!used.length){toast('وزّع الطلبات أولاً');return}
@@ -633,7 +643,7 @@ function repCsv(){
   const [f,t]=repRange(REP.p),rows=[['التاريخ','السائق','الزبون','المنطقة','الكراتين','المسلَّم','القيمة','النقد','الحالة','السبب','مُسح عند التحميل','إثبات تسليم']];
   for(let d=f;d<=t;d=addDays(d,1)){const x=DAYS[d];if(!x)continue;
     x.orders.forEach(o=>rows.push([d,nameOf(o.driverId||'_'),o.cust,o.area,o.cartons||0,o.status==='done'?dlv(o):0,o.value||0,cashOf(o),o.status==='done'?(partial(o)?'جزئي':'مسلّم'):({ret:'راجع',post:'مؤجل',new:'لم يُسلَّم'}[o.status]||o.status),o.reason||'',o.loaded?'نعم':'',o.pod?'نعم':'']))}
-  const csv='﻿'+rows.map(r=>r.map(c=>{c=String(c);return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')).join('\r\n');
+  const csv='﻿'+rows.map(r=>r.map(c=>{c=String(c);if(/^[=+\-@\t\r]/.test(c))c="'"+c;return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='تقرير-التوزيع-'+f+'-'+t+'.csv';
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);toast('تم تنزيل الملف');
 }
@@ -676,13 +686,22 @@ function demo(){
 }
 
 /* ===== الأحداث ===== */
-let wipeArmed=false;
+let wipeArmed=false,rotArmed='';
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');
   if(!b){if(e.target.id==='sheetBg')closeSheet();return}
   const a=b.dataset.act,v=b.dataset.v;
   if(a==='go'){location.hash=v;return}
   if(a==='close'){closeSheet();render();return}
+  if(a==='reload'){location.reload();return}
+  if(a==='rot'){
+    if(rotArmed!==v){rotArmed=v;b.textContent='اضغط مرة ثانية للتأكيد';setTimeout(()=>{rotArmed='';if(tab()==='setup')render()},4000);return}
+    rotArmed='';
+    try{const n=await rpc('sup_rotate',{p_code:KEY,p_which:v});if(!n)throw 0;
+      if(v==='drive'){TEAM.drive_code=n;D.sent={};saveD();render();msgSheet('رابط السائقين تغيّر','الروابط القديمة للسائقين توقفت. أرسل خط السير لكل سائق من تبويب التوزيع ليصله رابطه الجديد.')}
+      else{KEY=n;try{localStorage.setItem('supKey',n)}catch(err){}render();msgSheet('رابط المشرف الجديد','احفظ هذا الرابط في مكان آمن. الرابط القديم توقف على كل الأجهزة:\n'+location.origin+location.pathname+'#'+n)}
+    }catch(err){toast('تعذّر التغيير. تحقق من الإنترنت.')}
+    return}
   if(a==='labels'){printLabels();return}
   if(a==='scanload'){if(!D.orders.some(o=>o.driverId)){toast('وزّع الطلبات أولاً');return}scanLoad();return}
   if(a==='flog'){flogSheet(v);return}
@@ -748,7 +767,7 @@ document.addEventListener('click',async e=>{
     if(!wipeArmed){wipeArmed=true;b.textContent='اضغط مرة ثانية للتأكيد';setTimeout(()=>{wipeArmed=false;if(tab()==='setup')render()},4000);return}
     wipeArmed=false;try{await loadRange(addDays(iso(new Date()),-92),iso(new Date()))}catch(err){}M={company:'',drivers:[],vehicles:[],customers:[],settings:{}};F={logs:[]};saveF();REP.ready='';Object.keys(DAYS).forEach(k=>{if(DAYS[k].orders.length||k===curDate){DAYS[k]=blankDay();persist('days/'+k,DAYS[k])}});D=DAYS[curDate];saveM();render();toast('مُسحت البيانات');return}
 });
-window.addEventListener('hashchange',render);
+window.addEventListener('hashchange',()=>{closeSheet();render()});
 init();
 </script>
 </body>
